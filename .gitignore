@@ -1,0 +1,33 @@
+# Jenkins specific
+*.log
+work/
+reports/
+data/
+
+# Build artifacts
+*.html
+*.json
+*.xml
+!vulnerabilities.json
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*~
+*.bak
+*.swp
+
+# Temporary files
+temp/
+tmp/
+*.tmp
