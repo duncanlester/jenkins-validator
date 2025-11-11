@@ -3,40 +3,53 @@
 def fetchInstalledPlugins() {
     echo "📦 Fetching installed Jenkins plugins..."
     
-    def jenkins = Jenkins.instance
-    def pluginManager = jenkins.pluginManager
-    def plugins = pluginManager.plugins
+    def pluginData = getPluginData()
     
-    env.PLUGIN_DATA = groovy.json.JsonOutput.toJson(
-        plugins.collect { plugin ->
-            [
-                shortName: plugin.shortName,
-                longName: plugin.longName,
-                version: plugin.version,
-                enabled: plugin.enabled,
-                active: plugin.active,
-                hasUpdate: plugin.hasUpdate(),
-                url: plugin.url,
-                dependencies: plugin.dependencies.collect { dep ->
-                    [
-                        shortName: dep.shortName,
-                        version: dep.version,
-                        optional: dep.optional
-                    ]
-                }
-            ]
-        }
-    )
+    env.PLUGIN_DATA = groovy.json.JsonOutput.toJson(pluginData)
     
     writeFile file: 'plugins.json', text: env.PLUGIN_DATA
     archiveArtifacts artifacts: 'plugins.json'
     
-    echo "✅ Found ${plugins.size()} plugins"
+    echo "✅ Found ${pluginData.size()} plugins"
+}
+
+@NonCPS
+def getPluginData() {
+    def jenkins = Jenkins.instance
+    def pluginManager = jenkins.pluginManager
+    def plugins = pluginManager.plugins
+    
+    return plugins.collect { plugin ->
+        [
+            shortName: plugin.shortName,
+            longName: plugin.longName,
+            version: plugin.version,
+            enabled: plugin.enabled,
+            active: plugin.active,
+            hasUpdate: plugin.hasUpdate(),
+            url: plugin.url,
+            dependencies: plugin.dependencies.collect { dep ->
+                [
+                    shortName: dep.shortName,
+                    version: dep.version,
+                    optional: dep.optional
+                ]
+            }
+        ]
+    }
 }
 
 def fetchSecurityWarnings() {
     echo "🔍 Checking Jenkins Update Center for security warnings..."
     
+    def allWarnings = getSecurityWarnings()
+    
+    env.SECURITY_WARNINGS = groovy.json.JsonOutput.toJson(allWarnings)
+    echo "⚠️ Found ${allWarnings.size()} security warnings"
+}
+
+@NonCPS
+def getSecurityWarnings() {
     def jenkins = Jenkins.instance
     def updateCenter = jenkins.updateCenter
     def allWarnings = []
@@ -64,18 +77,22 @@ def fetchSecurityWarnings() {
         }
     }
     
-    env.SECURITY_WARNINGS = groovy.json.JsonOutput.toJson(allWarnings)
-    echo "⚠️ Found ${allWarnings.size()} security warnings"
+    return allWarnings
 }
 
 def checkForUpdates() {
     def pluginData = readJSON text: env.PLUGIN_DATA
-    def outdatedPlugins = pluginData.findAll { it.hasUpdate }
+    def outdatedPlugins = findOutdatedPlugins(pluginData)
     
     echo "📊 ${outdatedPlugins.size()} plugins have updates available"
     
     env.OUTDATED_COUNT = outdatedPlugins.size().toString()
     env.OUTDATED_PLUGINS = groovy.json.JsonOutput.toJson(outdatedPlugins)
+}
+
+@NonCPS
+def findOutdatedPlugins(pluginData) {
+    return pluginData.findAll { it.hasUpdate }
 }
 
 def scanVulnerabilities() {
@@ -125,7 +142,8 @@ def scanVulnerabilities() {
     }
 }
 
-private def determineSeverity(String message) {
+@NonCPS
+def determineSeverity(String message) {
     if (!message) return 'MEDIUM'
     
     def lowerMsg = message.toLowerCase()
@@ -137,7 +155,8 @@ private def determineSeverity(String message) {
     return 'MEDIUM'
 }
 
-private def getCvssScore(String severity) {
+@NonCPS
+def getCvssScore(String severity) {
     switch(severity) {
         case 'CRITICAL': return 9.0
         case 'HIGH': return 7.5

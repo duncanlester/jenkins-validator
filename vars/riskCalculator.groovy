@@ -4,9 +4,9 @@ def calculateRisk() {
     def pluginData = readJSON text: env.PLUGIN_DATA
     def vulnData = readJSON text: env.VULNERABILITIES
     
-    def criticalCount = vulnData.count { it.severity == 'CRITICAL' }
-    def highCount = vulnData.count { it.severity == 'HIGH' }
-    def mediumCount = vulnData.count { it.severity == 'MEDIUM' }
+    def criticalCount = countBySeverity(vulnData, 'CRITICAL')
+    def highCount = countBySeverity(vulnData, 'HIGH')
+    def mediumCount = countBySeverity(vulnData, 'MEDIUM')
     def outdatedCount = Integer.parseInt(env.OUTDATED_COUNT)
     
     def riskScore = Math.min(
@@ -32,7 +32,13 @@ def calculateRisk() {
     echo "   - Outdated: ${outdatedCount}"
 }
 
-private def getRiskRating(int score) {
+@NonCPS
+def countBySeverity(vulnData, severity) {
+    return vulnData.count { it.severity == severity }
+}
+
+@NonCPS
+def getRiskRating(int score) {
     if (score > 70) return 'CRITICAL'
     if (score > 40) return 'HIGH'
     if (score > 20) return 'MEDIUM'
