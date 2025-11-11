@@ -43,30 +43,48 @@ def generateReports() {
     
     writeFile file: 'plugin-validation-report.json', text: jsonReport
     
-    archiveArtifacts artifacts: '*.html,*.json,*.pdf'
+    archiveArtifacts artifacts: '*.html,*.json'
     
-    publishHTML([
-        allowMissing: false,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: '.',
-        reportFiles: 'plugin-validation-report.html',
-        reportName: 'Plugin Validation Report',
-        reportTitles: 'Jenkins Plugin Security Report'
-    ])
+    try {
+        publishHTML([
+            allowMissing: false,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: '.',
+            reportFiles: 'plugin-validation-report.html',
+            reportName: 'Plugin Validation Report',
+            reportTitles: 'Jenkins Plugin Security Report'
+        ])
+    } catch (Exception e) {
+        echo "⚠️ HTML Publisher not available: ${e.message}"
+        echo "💡 Install 'HTML Publisher Plugin' to view reports in Jenkins UI"
+    }
+    
+    echo "✅ Reports generated successfully!"
 }
 
 def sendSuccessNotification() {
     echo "✅ Plugin validation completed successfully!"
     
+    // Check if Slack is available
+    def hasSlack = checkPluginInstalled('slack')
+    
+    if (!hasSlack) {
+        echo "💡 Slack plugin not installed. Skipping Slack notification."
+        echo "💡 Install 'Slack Notification Plugin' to enable Slack alerts"
+        return
+    }
+    
     try {
+        def pluginCount = readJSON(text: env.PLUGIN_DATA).size()
+        
         slackSend(
             color: env.RISK_RATING == 'LOW' ? 'good' : env.RISK_RATING == 'CRITICAL' ? 'danger' : 'warning',
             message: """
                 🔒 Jenkins Plugin Validation Report
                 
                 *Status:* ${currentBuild.result}
-                *Total Plugins:* ${readJSON(text: env.PLUGIN_DATA).size()}
+                *Total Plugins:* ${pluginCount}
                 *Risk Score:* ${env.RISK_SCORE}/100 (${env.RISK_RATING})
                 
                 *Vulnerabilities Found:*
@@ -82,6 +100,7 @@ def sendSuccessNotification() {
         )
     } catch (Exception e) {
         echo "⚠️ Slack notification failed: ${e.message}"
+        echo "💡 Configure Slack webhook in Jenkins: Manage Jenkins → Configure System → Slack"
     }
 }
 
@@ -91,6 +110,14 @@ def sendSecurityAlert() {
     }
     
     echo "⚠️ Vulnerabilities detected!"
+    
+    // Check if Slack is available
+    def hasSlack = checkPluginInstalled('slack')
+    
+    if (!hasSlack) {
+        echo "💡 Slack plugin not installed. Skipping security alert."
+        return
+    }
     
     try {
         slackSend(
@@ -108,8 +135,16 @@ def sendSecurityAlert() {
             """.stripIndent()
         )
     } catch (Exception e) {
-        echo "⚠️ Slack notification failed: ${e.message}"
+        echo "⚠️ Security alert via Slack failed: ${e.message}"
     }
+}
+
+@NonCPS
+def checkPluginInstalled(String pluginName) {
+    def jenkins = Jenkins.instance
+    def pluginManager = jenkins.pluginManager
+    def plugin = pluginManager.getPlugin(pluginName)
+    return plugin != null && plugin.isEnabled()
 }
 
 @NonCPS
@@ -298,7 +333,7 @@ private String generateHTMLReport(plugins, vulnerabilities, outdated, riskScore,
                     </tr>
                 </thead>
                 <tbody>
-                    ${plugins.collect { plugin -> """
+                    ${plugins.take(50).collect { plugin -> """
                     <tr>
                         <td><strong>${plugin.longName}</strong></td>
                         <td>${plugin.version}</td>
@@ -307,6 +342,7 @@ private String generateHTMLReport(plugins, vulnerabilities, outdated, riskScore,
                         </td>
                     </tr>
                     """ }.join('')}
+                    ${plugins.size() > 50 ? '<tr><td colspan="3"><em>... and ' + (plugins.size() - 50) + ' more plugins (see JSON report for full list)</em></td></tr>' : ''}
                 </tbody>
             </table>
         </div>
