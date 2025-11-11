@@ -40,37 +40,86 @@ def getPluginData() {
 }
 
 def fetchSecurityWarnings() {
-    echo "🔍 Fetching security warnings from Jenkins Update Center..."
+    echo "🔍 Fetching security warnings - DEEP DEBUG MODE..."
     
-    def allWarnings = getSecurityWarnings()
+    def allWarnings = getSecurityWarningsDebug()
     
     env.SECURITY_WARNINGS = groovy.json.JsonOutput.toJson(allWarnings)
-    echo "⚠️ Found ${allWarnings.size()} security warnings"
+    echo "⚠️ Total warnings collected: ${allWarnings.size()}"
 }
 
 @NonCPS
-def getSecurityWarnings() {
+def getSecurityWarningsDebug() {
     def jenkins = Jenkins.instance
+    def pluginManager = jenkins.pluginManager
     def updateCenter = jenkins.updateCenter
     def allWarnings = []
     
-    // Force update of Update Center data
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🔍 DEEP DEBUG: Update Center Analysis"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    // Check each plugin for security warnings using PluginManager API
+    pluginManager.plugins.each { plugin ->
+        try {
+            def wrapper = pluginManager.getPlugin(plugin.shortName)
+            
+            // Check if plugin has security warnings
+            def hasWarnings = updateCenter.getPlugin(plugin.shortName)?.hasWarnings()
+            
+            if (hasWarnings) {
+                echo "⚠️ ${plugin.shortName} ${plugin.version} HAS WARNINGS"
+                
+                // Get the actual warnings for this plugin
+                def pluginInfo = updateCenter.getPlugin(plugin.shortName)
+                if (pluginInfo) {
+                    def warnings = pluginInfo.getWarnings()
+                    
+                    warnings.each { warning ->
+                        echo "   Type: ${warning.type}"
+                        echo "   ID: ${warning.id}"
+                        echo "   Message: ${warning.message?.take(100)}"
+                        
+                        allWarnings << [
+                            type: warning.type,
+                            id: warning.id,
+                            name: plugin.shortName,
+                            message: warning.message,
+                            url: warning.url,
+                            active: warning.isActive(),
+                            versions: warning.versions?.collect { v -> v.toString() }
+                        ]
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Continue silently
+        }
+    }
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    // Also check Update Sites
+    echo "🔍 Checking Update Sites..."
     updateCenter.sites.each { site ->
         try {
-            // This is what Jenkins UI uses - force a fresh check
+            echo "📍 Site: ${site.url}"
+            
             site.updateDirectlyNow()
-            Thread.sleep(2000) // Wait for update to complete
+            Thread.sleep(3000)
             
             def data = site.getData()
             
             if (data != null) {
-                // Get warnings the same way Jenkins UI does
-                def warnings = data.getWarnings()
+                def siteWarnings = data.getWarnings()
                 
-                if (warnings != null && !warnings.isEmpty()) {
-                    warnings.each { warning ->
-                        // warning is a hudson.model.UpdateSite.Warning object
+                if (siteWarnings != null && !siteWarnings.isEmpty()) {
+                    echo "   Found ${siteWarnings.size()} warnings in site data"
+                    
+                    siteWarnings.each { warning ->
                         if (warning.type == 'plugin') {
+                            echo "   ⚠️ ${warning.name}: ${warning.id}"
+                            
                             allWarnings << [
                                 type: warning.type,
                                 id: warning.id,
@@ -78,7 +127,7 @@ def getSecurityWarnings() {
                                 message: warning.message,
                                 url: warning.url,
                                 versions: warning.versions?.collect { v -> 
-                                    [pattern: v.pattern ?: v.toString()]
+                                    [pattern: v.pattern ?: v.toString(), firstVersion: v.firstVersion]
                                 }
                             ]
                         }
@@ -86,11 +135,21 @@ def getSecurityWarnings() {
                 }
             }
         } catch (Exception e) {
-            echo "⚠️ Error checking site ${site.url}: ${e.message}"
+            echo "⚠️ Error: ${e.message}"
         }
     }
     
-    return allWarnings
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    // Deduplicate
+    def uniqueWarnings = allWarnings.unique { [it.name, it.id] }
+    
+    echo "📊 Total unique warnings: ${uniqueWarnings.size()}"
+    uniqueWarnings.each { w ->
+        echo "   • ${w.name} - ${w.id}"
+    }
+    
+    return uniqueWarnings
 }
 
 def checkForUpdates() {
@@ -109,69 +168,51 @@ def findOutdatedPlugins(pluginData) {
 }
 
 def scanVulnerabilities() {
-    echo "🔍 Scanning for vulnerabilities using Jenkins' security data..."
+    echo "🔍 Scanning for vulnerabilities..."
     
     def pluginData = readJSON text: env.PLUGIN_DATA
     def securityWarnings = readJSON text: env.SECURITY_WARNINGS
     def vulnerabilities = []
     
-    echo "📋 Checking ${pluginData.size()} plugins against ${securityWarnings.size()} security warnings"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🔍 MATCHING: ${pluginData.size()} plugins vs ${securityWarnings.size()} warnings"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
-    // Match installed plugins against security warnings
     pluginData.each { plugin ->
-        securityWarnings.each { warning ->
-            // Check if warning applies to this plugin
-            if (warning.name == plugin.shortName) {
+        def matchingWarnings = securityWarnings.findAll { w -> w.name == plugin.shortName }
+        
+        if (matchingWarnings.size() > 0) {
+            echo "✅ ${plugin.shortName} ${plugin.version} - Found ${matchingWarnings.size()} warning(s)"
+            
+            matchingWarnings.each { warning ->
+                def cveMatch = (warning.id =~ /CVE-\d{4}-\d+/)
+                def cve = cveMatch ? cveMatch[0] : warning.id
                 
-                // Check if the installed version is affected
-                def isAffected = false
+                def severity = determineSeverity(warning.message)
+                def cvssScore = getCvssScore(severity)
                 
-                if (warning.versions && warning.versions.size() > 0) {
-                    // Check version patterns
-                    warning.versions.each { versionInfo ->
-                        def pattern = versionInfo.pattern
-                        if (pattern) {
-                            // Pattern matching logic (Jenkins uses this internally)
-                            isAffected = isAffected || versionMatches(plugin.version.toString(), pattern)
-                        } else {
-                            // No version restriction means all versions affected
-                            isAffected = true
-                        }
-                    }
-                } else {
-                    // No version info means all versions are affected
-                    isAffected = true
-                }
+                vulnerabilities << [
+                    plugin: plugin.shortName,
+                    version: plugin.version.toString(),
+                    cve: cve,
+                    severity: severity,
+                    cvss: cvssScore,
+                    description: warning.message,
+                    url: warning.url,
+                    installed: plugin.version.toString()
+                ]
                 
-                if (isAffected) {
-                    def cveMatch = (warning.id =~ /CVE-\d{4}-\d+/)
-                    def cve = cveMatch ? cveMatch[0] : warning.id
-                    
-                    def severity = determineSeverity(warning.message)
-                    def cvssScore = getCvssScore(severity)
-                    
-                    vulnerabilities << [
-                        plugin: plugin.shortName,
-                        version: plugin.version.toString(),
-                        cve: cve,
-                        severity: severity,
-                        cvss: cvssScore,
-                        description: warning.message,
-                        url: warning.url,
-                        installed: plugin.version.toString()
-                    ]
-                    
-                    echo "⚠️ Found vulnerability: ${plugin.shortName} ${plugin.version} - ${cve}"
-                }
+                echo "   ❌ ${cve} - ${severity}"
             }
         }
     }
     
-    // Remove duplicates
     vulnerabilities = vulnerabilities.unique { [it.plugin, it.cve] }
     
     env.VULNERABILITIES = groovy.json.JsonOutput.toJson(vulnerabilities)
     env.VULN_COUNT = vulnerabilities.size().toString()
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     if (vulnerabilities.size() > 0) {
         currentBuild.result = 'UNSTABLE'
@@ -181,44 +222,13 @@ def scanVulnerabilities() {
             echo "  ❌ ${vuln.plugin} ${vuln.version}: ${vuln.cve} (${vuln.severity})"
         }
     } else {
-        echo "✅ No known vulnerabilities detected"
-    }
-}
-
-@NonCPS
-def versionMatches(String installedVersion, String pattern) {
-    // Jenkins version pattern matching
-    // Patterns like "2.0.2", "1.0", etc. mean "this version and earlier"
-    
-    try {
-        if (pattern.contains('*')) {
-            // Wildcard pattern
-            def regex = pattern.replace('.', '\\.').replace('*', '.*')
-            return installedVersion.matches(regex)
-        } else {
-            // Exact version or "up to and including" pattern
-            // Jenkins treats this as "this version and all earlier versions are affected"
-            def installedParts = installedVersion.split('\\.')
-            def patternParts = pattern.split('\\.')
-            
-            // Compare version parts
-            for (int i = 0; i < Math.min(installedParts.length, patternParts.length); i++) {
-                def installedNum = installedParts[i].replaceAll('[^0-9]', '') as Integer
-                def patternNum = patternParts[i].replaceAll('[^0-9]', '') as Integer
-                
-                if (installedNum < patternNum) {
-                    return true  // Installed version is older, affected
-                } else if (installedNum > patternNum) {
-                    return false  // Installed version is newer, not affected
-                }
-            }
-            
-            // If all parts match, this version is affected
-            return installedParts.length <= patternParts.length
-        }
-    } catch (Exception e) {
-        // If parsing fails, assume affected to be safe
-        return true
+        echo "✅ No vulnerabilities detected"
+        echo ""
+        echo "💡 If Jenkins UI shows a vulnerability but this doesn't:"
+        echo "   1. Check the console output above for 'HAS WARNINGS'"
+        echo "   2. The plugin name might be different"
+        echo "   3. Update Center might need manual refresh"
+        echo "   4. Go to: Manage Jenkins → Manage Plugins → Advanced → Check now"
     }
 }
 
