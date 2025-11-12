@@ -11,6 +11,7 @@ def generateReports() {
     
     def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss', TimeZone.getTimeZone('UTC'))
     def jenkinsVersion = Jenkins.instance.version.toString()
+    def currentUser = getCurrentUser()
     
     def html = """<!DOCTYPE html>
 <html lang="en">
@@ -257,19 +258,6 @@ def generateReports() {
         }
         
         strong { font-weight: 600; }
-        
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-muted);
-        }
-        
-        .empty-state svg {
-            width: 64px;
-            height: 64px;
-            margin-bottom: 16px;
-            opacity: 0.3;
-        }
     </style>
 </head>
 <body>
@@ -279,7 +267,7 @@ def generateReports() {
             <div class="header-meta">
                 <div><strong>Generated:</strong> ${timestamp} UTC</div>
                 <div><strong>Jenkins:</strong> ${jenkinsVersion}</div>
-                <div><strong>User:</strong> duncanlester</div>
+                <div><strong>User:</strong> ${currentUser}</div>
             </div>
         </div>
         
@@ -419,6 +407,16 @@ def generateReports() {
     }
     
     echo "✅ Reports generated successfully!"
+}
+
+@NonCPS
+def getCurrentUser() {
+    try {
+        def user = hudson.model.User.current()
+        return user?.getId() ?: 'System'
+    } catch (Exception e) {
+        return 'Unknown'
+    }
 }
 
 def sendSuccessNotification() {
