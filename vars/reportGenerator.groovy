@@ -6,6 +6,7 @@ def generateReports() {
     def pluginJson = readFile(file: 'plugins.json')
     def plugins = readJSON text: pluginJson
     def vulns = readJSON text: (env.VULNERABILITIES ?: '[]')
+    def outdated = readJSON text: (env.OUTDATED_PLUGINS ?: '[]')
     
     def pluginCount = plugins.size()
     echo "📊 Generating report for ${pluginCount} plugins"
@@ -14,11 +15,10 @@ def generateReports() {
     def jenkinsVersion = Jenkins.instance.version.toString()
     def currentUser = getCurrentUser()
     
-    def vulnCount = env.VULN_COUNT?.toInteger() ?: 0
-    def outdatedCount = env.OUTDATED_COUNT?.toInteger() ?: 0
+    def vulnCount = vulns.size()
+    def outdatedCount = outdated.size()
     def riskScore = env.RISK_SCORE?.toInteger() ?: 0
     
-    // Determine CSS classes based on data
     def vulnColorClass = vulnCount > 0 ? 'color-danger' : 'color-success'
     def riskColorClass = riskScore < 30 ? 'color-success' : (riskScore < 70 ? 'color-warning' : 'color-danger')
     
@@ -141,6 +141,52 @@ def generateReports() {
             border-bottom: 3px solid var(--primary);
         }
         
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        
+        .summary-item {
+            padding: 16px;
+            background: #f8f9fc;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary);
+        }
+        
+        .summary-item h4 {
+            font-size: 13px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
+        .summary-item .summary-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        
+        .issue-link {
+            display: inline-block;
+            padding: 10px 20px;
+            background: var(--primary);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            margin-top: 16px;
+            transition: background 0.2s;
+        }
+        
+        .issue-link:hover {
+            background: var(--primary-dark);
+        }
+        
         table { 
             width: 100%;
             border-collapse: separate;
@@ -218,6 +264,10 @@ def generateReports() {
         }
         
         strong { font-weight: 600; }
+        
+        .vuln-critical { background: #ffebee; border-left-color: var(--critical); }
+        .vuln-high { background: #fff3e0; border-left-color: var(--danger); }
+        .vuln-medium { background: #fff9e6; border-left-color: var(--warning); }
     </style>
 </head>
 <body>
@@ -251,10 +301,46 @@ def generateReports() {
         </div>
 """
 
+    // Summary section at the top
+    html << """
+        <div class="section">
+            <h2>📊 Executive Summary</h2>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <h4>Total Plugins Installed</h4>
+                    <div class="summary-value">${pluginCount} plugins</div>
+                </div>
+                <div class="summary-item">
+                    <h4>Security Vulnerabilities</h4>
+                    <div class="summary-value ${vulnColorClass}">${vulnCount} found</div>
+                </div>
+                <div class="summary-item">
+                    <h4>Outdated Plugins</h4>
+                    <div class="summary-value color-warning">${outdatedCount} need updates</div>
+                </div>
+                <div class="summary-item">
+                    <h4>Overall Risk Level</h4>
+                    <div class="summary-value ${riskColorClass}">${riskScore < 30 ? 'Low' : (riskScore < 70 ? 'Medium' : 'High')}</div>
+                </div>
+            </div>
+"""
+    
+    // Link to GitHub issue if BUILD_URL is available
+    if (env.BUILD_URL) {
+        html << """
+            <a href="${env.BUILD_URL}" class="issue-link">📋 View Full Build Details</a>
+"""
+    }
+    
+    html << """
+        </div>
+"""
+
+    // Vulnerabilities section
     if (vulns.size() > 0) {
         html << """
         <div class="section">
-            <h2>🚨 Security Vulnerabilities</h2>
+            <h2>🚨 Security Vulnerabilities (${vulnCount} found)</h2>
             <table>
                 <thead>
                     <tr>
@@ -283,11 +369,60 @@ def generateReports() {
             </table>
         </div>
 """
+    } else {
+        html << """
+        <div class="section">
+            <h2>✅ Security Status</h2>
+            <div class="summary-item" style="border-left-color: var(--success);">
+                <h4>No Vulnerabilities Detected</h4>
+                <div class="summary-value color-success">All plugins are secure</div>
+            </div>
+        </div>
+"""
     }
 
+    // Outdated plugins section
+    if (outdatedCount > 0) {
+        html << """
+        <div class="section">
+            <h2>⚠️ Outdated Plugins (${outdatedCount} need updates)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-25">Plugin Name</th>
+                        <th class="col-15">Short Name</th>
+                        <th class="col-15">Current Version</th>
+                        <th class="col-20">Developers</th>
+                        <th class="col-15">Jenkins Version</th>
+                        <th class="col-10">Dependencies</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+        outdated.each { p ->
+            def devName = (p.developerNames ?: 'Unknown').toString().split(':')[0]
+            html << """
+                    <tr>
+                        <td><strong>${escapeHtml(p.longName)}</strong></td>
+                        <td><code>${escapeHtml(p.shortName)}</code></td>
+                        <td>${escapeHtml(p.version)}</td>
+                        <td>${escapeHtml(devName)}</td>
+                        <td>${escapeHtml(p.jenkinsVersion ?: '-')}</td>
+                        <td class="td-center">${p.dependencyCount ?: 0}</td>
+                    </tr>
+"""
+        }
+        html << """
+                </tbody>
+            </table>
+        </div>
+"""
+    }
+
+    // All plugins section
     html << """
         <div class="section">
-            <h2>📦 Installed Plugins (${pluginCount} total)</h2>
+            <h2>📦 All Installed Plugins (${pluginCount} total)</h2>
             <table>
                 <thead>
                     <tr>
