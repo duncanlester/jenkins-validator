@@ -12,18 +12,28 @@ def call() {
     
     env.RISK_SCORE = totalScore.toString()
     
+    def vulnScore = Math.min(vulnCount * 15, 60)
+    def outdatedScore = ((outdatedCount / totalPlugins) * 100 * 0.3).toInteger()
+    outdatedScore = Math.min(outdatedScore, 30)
+    
     echo "📊 Risk Score: ${totalScore}/100"
+    echo "   - Vulnerabilities: ${vulnScore} points"
+    echo "   - Outdated: ${outdatedScore} points"
+    echo "   - Baseline: 10 points"
     
     return totalScore
 }
 
 @NonCPS
 def computeRiskScore(int vulnCount, int outdatedCount, int totalPlugins) {
-    def vulnScore = Math.min(vulnCount * 15, 60)
-    def outdatedScore = Math.min((outdatedCount / totalPlugins) * 100 * 0.3, 30)
-    def baselineScore = 10
+    int vulnScore = Math.min(vulnCount * 15, 60)
     
-    def totalScore = (vulnScore + outdatedScore + baselineScore).toInteger()
+    double outdatedRatio = totalPlugins > 0 ? (outdatedCount / (double)totalPlugins) : 0.0
+    int outdatedScore = Math.min((int)(outdatedRatio * 100 * 0.3), 30)
+    
+    int baselineScore = 10
+    
+    int totalScore = vulnScore + outdatedScore + baselineScore
     
     return totalScore
 }
