@@ -150,10 +150,9 @@ private String generateHTMLReport(plugins, vulnerabilities, outdated, riskScore,
     def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss', TimeZone.getTimeZone('UTC'))
     def jenkins = Jenkins.instance
     
-    // Escape the JSON properly for embedding in JavaScript
-    def pluginsJson = groovy.json.JsonOutput.toJson(plugins)
-    def vulnJson = groovy.json.JsonOutput.toJson(vulnerabilities)
-    def outdatedJson = groovy.json.JsonOutput.toJson(outdated)
+    def pluginsJson = groovy.json.JsonOutput.toJson(plugins).replaceAll("\\\\", "\\\\\\\\").replaceAll("'", "\\\\'")
+    def vulnJson = groovy.json.JsonOutput.toJson(vulnerabilities).replaceAll("\\\\", "\\\\\\\\").replaceAll("'", "\\\\'")
+    def outdatedJson = groovy.json.JsonOutput.toJson(outdated).replaceAll("\\\\", "\\\\\\\\").replaceAll("'", "\\\\'")
     
     return """<!DOCTYPE html>
 <html lang="en">
@@ -214,34 +213,9 @@ private String generateHTMLReport(plugins, vulnerabilities, outdated, riskScore,
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .section h2 { margin-bottom: 20px; color: #333; font-size: 24px; font-weight: 700; }
-        .controls {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .search-box { flex: 1; min-width: 250px; }
-        .search-box input {
-            width: 100%;
-            padding: 10px 15px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-        .search-box input:focus { outline: none; border-color: #667eea; }
-        .filter-group { display: flex; gap: 10px; align-items: center; }
-        .filter-group label { font-size: 14px; color: #666; font-weight: 500; }
-        select {
-            padding: 8px 12px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 14px;
-            background: white;
-            cursor: pointer;
-        }
         .table-container { overflow-x: auto; margin-top: 20px; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        thead { position: sticky; top: 0; z-index: 10; }
         th {
             background: #f8f9fa;
             padding: 14px 12px;
@@ -251,13 +225,7 @@ private String generateHTMLReport(plugins, vulnerabilities, outdated, riskScore,
             color: #495057;
             font-size: 13px;
             text-transform: uppercase;
-            cursor: pointer;
-            user-select: none;
         }
-        th:hover { background: #e9ecef; }
-        th.sortable::after { content: ' ⇅'; opacity: 0.3; }
-        th.sort-asc::after { content: ' ↑'; opacity: 1; }
-        th.sort-desc::after { content: ' ↓'; opacity: 1; }
         td { padding: 14px 12px; border-bottom: 1px solid #e9ecef; color: #495057; }
         tr:hover { background: #f8f9fa; }
         .badge {
@@ -283,10 +251,10 @@ private String generateHTMLReport(plugins, vulnerabilities, outdated, riskScore,
             padding-top: 20px;
             border-top: 2px solid #e9ecef;
         }
-        .pagination-info { color: #666; font-size: 14px; }
-        .pagination-controls { display: flex; gap: 8px; }
+        .pagination-info { color: #666; font-size: 14px; font-weight: 500; }
+        .pagination-controls { display: flex; gap: 10px; }
         .pagination button {
-            padding: 8px 16px;
+            padding: 10px 20px;
             border: 2px solid #e9ecef;
             background: white;
             border-radius: 8px;
@@ -374,129 +342,116 @@ private String generateHTMLReport(plugins, vulnerabilities, outdated, riskScore,
         ${outdated.size() > 0 ? """
         <div class="section">
             <h2>📦 Outdated Plugins (${outdated.size()})</h2>
-            <div class="controls">
-                <div class="search-box">
-                    <input type="text" id="outdatedSearch" placeholder="🔍 Search outdated plugins...">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Plugin Name</th>
+                            <th>Short Name</th>
+                            <th>Version</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="outdatedBody"></tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                <div class="pagination-info" id="outdatedInfo"></div>
+                <div class="pagination-controls">
+                    <button onclick="outdatedPage=1;renderOutdated()">First</button>
+                    <button onclick="outdatedPage--;renderOutdated()">Previous</button>
+                    <button onclick="outdatedPage++;renderOutdated()">Next</button>
+                    <button onclick="outdatedPage=outdatedTotalPages;renderOutdated()">Last</button>
                 </div>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th class="sortable" data-table="outdated" data-col="longName">Plugin Name</th>
-                        <th class="sortable" data-table="outdated" data-col="shortName">Short Name</th>
-                        <th class="sortable" data-table="outdated" data-col="version">Version</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="outdatedBody"></tbody>
-            </table>
-            <div class="pagination" id="outdatedPagination"></div>
         </div>
         """ : ''}
         
         <div class="section">
             <h2>📋 All Plugins (${plugins.size()})</h2>
-            <div class="controls">
-                <div class="search-box">
-                    <input type="text" id="pluginSearch" placeholder="🔍 Search plugins...">
-                </div>
-                <div class="filter-group">
-                    <label>Status:</label>
-                    <select id="statusFilter">
-                        <option value="all">All</option>
-                        <option value="enabled">Enabled</option>
-                        <option value="disabled">Disabled</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label>Per Page:</label>
-                    <select id="perPage">
-                        <option value="25">25</option>
-                        <option value="50" selected>50</option>
-                        <option value="100">100</option>
-                        <option value="9999">All</option>
-                    </select>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Plugin Name</th>
+                            <th>Short Name</th>
+                            <th>Version</th>
+                            <th>Status</th>
+                            <th>Active</th>
+                            <th>Dependencies</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pluginBody"></tbody>
+                </table>
+            </div>
+            <div class="pagination">
+                <div class="pagination-info" id="pluginInfo"></div>
+                <div class="pagination-controls">
+                    <button onclick="pluginPage=1;renderPlugins()">First</button>
+                    <button onclick="pluginPage--;renderPlugins()">Previous</button>
+                    <button onclick="pluginPage++;renderPlugins()">Next</button>
+                    <button onclick="pluginPage=pluginTotalPages;renderPlugins()">Last</button>
                 </div>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th class="sortable" data-table="plugins" data-col="longName">Plugin Name</th>
-                        <th class="sortable" data-table="plugins" data-col="shortName">Short Name</th>
-                        <th class="sortable" data-table="plugins" data-col="version">Version</th>
-                        <th class="sortable" data-table="plugins" data-col="enabled">Status</th>
-                        <th>Active</th>
-                        <th>Dependencies</th>
-                    </tr>
-                </thead>
-                <tbody id="pluginBody"></tbody>
-            </table>
-            <div class="pagination" id="pluginPagination"></div>
         </div>
     </div>
 
     <script>
-        const allPlugins = JSON.parse('${pluginsJson.replaceAll("\\\\", "\\\\\\\\").replaceAll("'", "\\\\'")}');
-        const outdatedPlugins = JSON.parse('${outdatedJson.replaceAll("\\\\", "\\\\\\\\").replaceAll("'", "\\\\'")}');
+        const allPlugins = JSON.parse('${pluginsJson}');
+        const outdatedPlugins = JSON.parse('${outdatedJson}');
         
-        let pluginPage = 1, pluginPerPage = 50, pluginFiltered = [...allPlugins];
-        let outdatedPage = 1, outdatedPerPage = 25, outdatedFiltered = [...outdatedPlugins];
-        let sortCol = null, sortDir = 'asc';
+        let pluginPage = 1;
+        const pluginPerPage = 50;
+        const pluginTotalPages = Math.ceil(allPlugins.length / pluginPerPage);
         
-        function render() {
-            renderPlugins();
-            renderOutdated();
-        }
+        let outdatedPage = 1;
+        const outdatedPerPage = 25;
+        const outdatedTotalPages = Math.ceil(outdatedPlugins.length / outdatedPerPage);
         
         function renderPlugins() {
+            if (pluginPage < 1) pluginPage = 1;
+            if (pluginPage > pluginTotalPages) pluginPage = pluginTotalPages;
+            
             const start = (pluginPage - 1) * pluginPerPage;
-            const end = pluginPerPage === 9999 ? pluginFiltered.length : start + pluginPerPage;
-            const page = pluginFiltered.slice(start, end);
+            const end = start + pluginPerPage;
+            const page = allPlugins.slice(start, end);
             
             document.getElementById('pluginBody').innerHTML = page.map(p => 
-                "<tr><td><strong>" + esc(p.longName) + "</strong></td>" +
+                "<tr>" +
+                "<td><strong>" + esc(p.longName) + "</strong></td>" +
                 "<td><code>" + esc(p.shortName) + "</code></td>" +
                 "<td>" + esc(p.version) + "</td>" +
                 "<td><span class='badge badge-" + (p.enabled ? "enabled'>ENABLED" : "disabled'>DISABLED") + "</span></td>" +
                 "<td>" + (p.active ? "✅" : "❌") + "</td>" +
-                "<td>" + (p.dependencies ? p.dependencies.length : 0) + "</td></tr>"
+                "<td>" + (p.dependencies ? p.dependencies.length : 0) + "</td>" +
+                "</tr>"
             ).join('');
             
-            const totalPages = Math.ceil(pluginFiltered.length / pluginPerPage);
-            document.getElementById('pluginPagination').innerHTML = 
-                "<div class='pagination-info'>Showing " + (start + 1) + "-" + Math.min(end, pluginFiltered.length) + " of " + pluginFiltered.length + "</div>" +
-                "<div class='pagination-controls'>" +
-                "<button onclick='pluginPage=1;render()' " + (pluginPage === 1 ? "disabled" : "") + ">First</button>" +
-                "<button onclick='pluginPage--;render()' " + (pluginPage === 1 ? "disabled" : "") + ">Prev</button>" +
-                "<span style='padding:8px 16px'>Page " + pluginPage + " of " + totalPages + "</span>" +
-                "<button onclick='pluginPage++;render()' " + (pluginPage === totalPages ? "disabled" : "") + ">Next</button>" +
-                "<button onclick='pluginPage=" + totalPages + ";render()' " + (pluginPage === totalPages ? "disabled" : "") + ">Last</button>" +
-                "</div>";
+            document.getElementById('pluginInfo').textContent = 
+                "Showing " + (start + 1) + "-" + Math.min(end, allPlugins.length) + 
+                " of " + allPlugins.length + " plugins (Page " + pluginPage + " of " + pluginTotalPages + ")";
         }
         
         function renderOutdated() {
-            if (!outdatedPlugins.length) return;
+            if (outdatedPage < 1) outdatedPage = 1;
+            if (outdatedPage > outdatedTotalPages) outdatedPage = outdatedTotalPages;
+            
             const start = (outdatedPage - 1) * outdatedPerPage;
             const end = start + outdatedPerPage;
-            const page = outdatedFiltered.slice(start, end);
+            const page = outdatedPlugins.slice(start, end);
             
             document.getElementById('outdatedBody').innerHTML = page.map(p => 
-                "<tr><td><strong>" + esc(p.longName) + "</strong></td>" +
+                "<tr>" +
+                "<td><strong>" + esc(p.longName) + "</strong></td>" +
                 "<td><code>" + esc(p.shortName) + "</code></td>" +
                 "<td>" + esc(p.version) + "</td>" +
-                "<td><span class='badge badge-update'>UPDATE AVAILABLE</span></td></tr>"
+                "<td><span class='badge badge-update'>UPDATE AVAILABLE</span></td>" +
+                "</tr>"
             ).join('');
             
-            const totalPages = Math.ceil(outdatedFiltered.length / outdatedPerPage);
-            document.getElementById('outdatedPagination').innerHTML = 
-                "<div class='pagination-info'>Showing " + (start + 1) + "-" + Math.min(end, outdatedFiltered.length) + " of " + outdatedFiltered.length + "</div>" +
-                "<div class='pagination-controls'>" +
-                "<button onclick='outdatedPage=1;render()' " + (outdatedPage === 1 ? "disabled" : "") + ">First</button>" +
-                "<button onclick='outdatedPage--;render()' " + (outdatedPage === 1 ? "disabled" : "") + ">Prev</button>" +
-                "<span style='padding:8px 16px'>Page " + outdatedPage + " of " + totalPages + "</span>" +
-                "<button onclick='outdatedPage++;render()' " + (outdatedPage === totalPages ? "disabled" : "") + ">Next</button>" +
-                "<button onclick='outdatedPage=" + totalPages + ";render()' " + (outdatedPage === totalPages ? "disabled" : "") + ">Last</button>" +
-                "</div>";
+            document.getElementById('outdatedInfo').textContent = 
+                "Showing " + (start + 1) + "-" + Math.min(end, outdatedPlugins.length) + 
+                " of " + outdatedPlugins.length + " plugins (Page " + outdatedPage + " of " + outdatedTotalPages + ")";
         }
         
         function esc(str) {
@@ -505,68 +460,8 @@ private String generateHTMLReport(plugins, vulnerabilities, outdated, riskScore,
             return div.innerHTML;
         }
         
-        document.getElementById('pluginSearch').addEventListener('input', e => {
-            const q = e.target.value.toLowerCase();
-            const status = document.getElementById('statusFilter').value;
-            pluginFiltered = allPlugins.filter(p => {
-                const match = p.longName.toLowerCase().includes(q) || p.shortName.toLowerCase().includes(q);
-                const statusMatch = status === 'all' || (status === 'enabled' && p.enabled) || (status === 'disabled' && !p.enabled);
-                return match && statusMatch;
-            });
-            pluginPage = 1;
-            render();
-        });
-        
-        document.getElementById('statusFilter').addEventListener('change', () => {
-            document.getElementById('pluginSearch').dispatchEvent(new Event('input'));
-        });
-        
-        document.getElementById('perPage').addEventListener('change', e => {
-            pluginPerPage = parseInt(e.target.value);
-            pluginPage = 1;
-            render();
-        });
-        
-        if (document.getElementById('outdatedSearch')) {
-            document.getElementById('outdatedSearch').addEventListener('input', e => {
-                const q = e.target.value.toLowerCase();
-                outdatedFiltered = outdatedPlugins.filter(p => 
-                    p.longName.toLowerCase().includes(q) || p.shortName.toLowerCase().includes(q)
-                );
-                outdatedPage = 1;
-                render();
-            });
-        }
-        
-        document.querySelectorAll('th.sortable').forEach(th => {
-            th.addEventListener('click', () => {
-                const table = th.dataset.table;
-                const col = th.dataset.col;
-                
-                if (sortCol === col) {
-                    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-                } else {
-                    sortCol = col;
-                    sortDir = 'asc';
-                }
-                
-                const arr = table === 'plugins' ? pluginFiltered : outdatedFiltered;
-                arr.sort((a, b) => {
-                    const aVal = (a[col] || '').toString().toLowerCase();
-                    const bVal = (b[col] || '').toString().toLowerCase();
-                    return sortDir === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
-                });
-                
-                document.querySelectorAll('th.sortable').forEach(t => {
-                    t.classList.remove('sort-asc', 'sort-desc');
-                });
-                th.classList.add('sort-' + sortDir);
-                
-                render();
-            });
-        });
-        
-        render();
+        renderPlugins();
+        if (outdatedPlugins.length > 0) renderOutdated();
     </script>
 </body>
 </html>"""
