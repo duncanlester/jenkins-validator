@@ -22,7 +22,6 @@ def getPluginData() {
     
     return plugins.collect { plugin ->
         def pluginInfo = updateCenter.getPlugin(plugin.shortName)
-        def wrapper = plugin.wrapper
         
         // Extract additional metadata
         def metadata = [
@@ -69,8 +68,9 @@ def getPluginData() {
             supportsDynamicLoad: plugin.supportsDynamicLoad.toString(),
             requiredCoreVersion: pluginInfo?.requiredCore?.toString() ?: plugin.requiredCoreVersion?.toString() ?: 'Unknown',
             
-            // File information
-            archive: wrapper?.archive?.toString() ?: null,
+            // File information - FIXED: Use getArchive() method instead of wrapper.archive
+            archive: plugin.getArchive()?.toString() ?: null,
+            backupVersion: plugin.getBackupVersion()?.toString() ?: null,
             
             // Categories/Labels
             labels: pluginInfo?.labels?.collect { it.toString() } ?: [],
