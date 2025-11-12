@@ -13,8 +13,8 @@ pipeline {
         stage('Scan Plugins') {
             steps {
                 script {
-                    pluginScanner.fetchInstalledPlugins()
-                    pluginScanner.fetchSecurityWarnings()
+                    fetchInstalledPlugins()
+                    fetchSecurityWarnings()
                 }
             }
         }
@@ -22,7 +22,7 @@ pipeline {
         stage('Check for Updates') {
             steps {
                 script {
-                    pluginScanner.checkForUpdates()
+                    checkForUpdates()
                 }
             }
         }
@@ -30,7 +30,7 @@ pipeline {
         stage('Scan Vulnerabilities') {
             steps {
                 script {
-                    pluginScanner.scanVulnerabilities()
+                    scanVulnerabilities()
                 }
             }
         }
@@ -38,7 +38,7 @@ pipeline {
         stage('Calculate Risk Score') {
             steps {
                 script {
-                    riskCalculator.calculateRiskScore()
+                    calculateRiskScore()
                 }
             }
         }
@@ -46,7 +46,7 @@ pipeline {
         stage('Generate SBOM') {
             steps {
                 script {
-                    sbomGenerator.generateSBOM()
+                    generateSBOM()
                 }
             }
         }
@@ -54,7 +54,7 @@ pipeline {
         stage('Generate Reports') {
             steps {
                 script {
-                    reportGenerator.generateReports()
+                    generateReports()
                 }
             }
         }
@@ -62,8 +62,8 @@ pipeline {
         stage('Send Notifications') {
             steps {
                 script {
-                    reportGenerator.sendSuccessNotification()
-                    reportGenerator.sendSecurityAlert()
+                    sendSuccessNotification()
+                    sendSecurityAlert()
                 }
             }
         }
