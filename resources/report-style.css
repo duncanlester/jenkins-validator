@@ -305,3 +305,45 @@ strong { font-weight: 600; }
     white-space: pre-wrap;
     word-wrap: break-word;
 }
+
+.notice-box {
+    background: #fff3cd;
+    border: 2px solid #ffc107;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+    color: #856404;
+    font-size: 14px;
+}
+
+.notice-box code {
+    background: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    display: block;
+    margin-top: 8px;
+    word-break: break-all;
+}
+
+.link-button {
+    background: #0366d6;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.link-button:hover {
+    background: #0256c7;
+}
+
+.url-copy {
+    font-size: 10px;
+    color: #586069;
+    margin-top: 4px;
+    word-break: break-all;
+}
