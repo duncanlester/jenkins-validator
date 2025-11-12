@@ -3,95 +3,342 @@
 def generateReports() {
     echo "📝 Generating validation reports..."
     
-    // Read raw JSON strings
     def pluginJson = env.PLUGIN_DATA
     def vulnJson = env.VULNERABILITIES
     def outdatedJson = env.OUTDATED_PLUGINS
     
     echo "📊 Generating report for ${env.TOTAL_PLUGINS ?: 'unknown'} plugins"
     
-    // Generate HTML report
     def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss', TimeZone.getTimeZone('UTC'))
     def jenkinsVersion = Jenkins.instance.version.toString()
     
     def html = """<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jenkins Plugin Validation Report</title>
     <style>
+        :root {
+            --primary: #335eea;
+            --primary-dark: #2948c8;
+            --success: #00c48c;
+            --warning: #ffa726;
+            --danger: #f44336;
+            --critical: #c62828;
+            --bg: #f8f9fc;
+            --card-bg: #ffffff;
+            --text: #1e2130;
+            --text-muted: #6c757d;
+            --border: #e1e4e8;
+            --shadow: 0 2px 12px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+        }
+        
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; padding: 20px; }
-        .container { max-width: 1800px; margin: 0 auto; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; border-radius: 12px; margin-bottom: 30px; }
-        .header h1 { font-size: 36px; margin-bottom: 10px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .stat-card h3 { color: #666; font-size: 13px; text-transform: uppercase; margin-bottom: 12px; }
-        .stat-card .value { font-size: 42px; font-weight: 700; }
-        .section { background: white; padding: 30px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .section h2 { margin-bottom: 20px; font-size: 24px; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th { background: #f8f9fa; padding: 12px 8px; text-align: left; font-weight: 600; border-bottom: 2px solid #dee2e6; font-size: 11px; text-transform: uppercase; }
-        td { padding: 10px 8px; border-bottom: 1px solid #e9ecef; }
-        tr:hover { background: #f8f9fa; }
-        .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
-        .badge-critical { background: #dc3545; color: white; }
-        .badge-high { background: #fd7e14; color: white; }
-        .badge-medium { background: #ffc107; color: #212529; }
-        .badge-enabled { background: #28a745; color: white; }
-        .badge-disabled { background: #6c757d; color: white; }
-        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 20px; border-top: 2px solid #e9ecef; }
-        .pagination button { padding: 10px 20px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; cursor: pointer; font-weight: 600; }
-        .pagination button:hover:not(:disabled) { background: #667eea; color: white; }
-        .pagination button:disabled { opacity: 0.3; cursor: not-allowed; border-color: #ccc; color: #ccc; }
-        code { background: #f8f9fa; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 11px; }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 30px 20px;
+        }
+        
+        .container { 
+            max-width: 1600px; 
+            margin: 0 auto; 
+        }
+        
+        .header { 
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 50px 40px;
+            border-radius: 16px;
+            margin-bottom: 40px;
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .header h1 { 
+            font-size: 42px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+        }
+        
+        .header-meta {
+            display: flex;
+            gap: 30px;
+            font-size: 15px;
+            opacity: 0.95;
+        }
+        
+        .header-meta strong { 
+            font-weight: 600;
+            opacity: 1;
+        }
+        
+        .stats { 
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-card { 
+            background: var(--card-bg);
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .stat-card h3 { 
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+        
+        .stat-card .value { 
+            font-size: 48px;
+            font-weight: 700;
+            color: var(--primary);
+            line-height: 1;
+        }
+        
+        .section { 
+            background: var(--card-bg);
+            padding: 36px;
+            border-radius: 12px;
+            margin-bottom: 32px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+        
+        .section h2 { 
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: var(--text);
+            padding-bottom: 16px;
+            border-bottom: 3px solid var(--primary);
+        }
+        
+        table { 
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 13px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        thead { 
+            background: linear-gradient(180deg, #f8f9fc 0%, #f1f3f9 100%);
+        }
+        
+        th { 
+            padding: 16px 14px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text);
+            border-bottom: 2px solid var(--border);
+            border-right: 1px solid var(--border);
+        }
+        
+        th:last-child { border-right: none; }
+        
+        td { 
+            padding: 14px;
+            border-bottom: 1px solid var(--border);
+            border-right: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        
+        td:last-child { border-right: none; }
+        
+        tbody tr { 
+            background: white;
+            transition: background-color 0.15s;
+        }
+        
+        tbody tr:hover { 
+            background: #f8f9fc;
+        }
+        
+        tbody tr:last-child td { 
+            border-bottom: none;
+        }
+        
+        .badge { 
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        
+        .badge-critical { background: var(--critical); color: white; }
+        .badge-high { background: var(--danger); color: white; }
+        .badge-medium { background: var(--warning); color: white; }
+        .badge-low { background: #90caf9; color: #0d47a1; }
+        .badge-enabled { background: var(--success); color: white; }
+        .badge-disabled { background: var(--text-muted); color: white; }
+        
+        .pagination { 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 28px;
+            padding-top: 24px;
+            border-top: 2px solid var(--border);
+        }
+        
+        .pagination-info {
+            font-size: 14px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        
+        .pagination-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .pagination button { 
+            padding: 12px 24px;
+            border: 2px solid var(--primary);
+            background: white;
+            color: var(--primary);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .pagination button:hover:not(:disabled) { 
+            background: var(--primary);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow);
+        }
+        
+        .pagination button:disabled { 
+            opacity: 0.3;
+            cursor: not-allowed;
+            border-color: var(--border);
+            color: var(--text-muted);
+        }
+        
+        code { 
+            background: #f4f5f7;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            color: #e83e8c;
+            border: 1px solid #e1e4e8;
+        }
+        
+        strong { font-weight: 600; }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🔒 Jenkins Plugin Validation Report</h1>
-            <p><strong>Generated:</strong> ${timestamp} UTC</p>
-            <p><strong>Jenkins:</strong> ${jenkinsVersion}</p>
+            <div class="header-meta">
+                <div><strong>Generated:</strong> ${timestamp} UTC</div>
+                <div><strong>Jenkins:</strong> ${jenkinsVersion}</div>
+                <div><strong>User:</strong> duncanlester</div>
+            </div>
         </div>
         
         <div class="stats">
-            <div class="stat-card"><h3>Total Plugins</h3><div class="value" id="totalCount">-</div></div>
-            <div class="stat-card"><h3>Vulnerabilities</h3><div class="value">${env.VULN_COUNT}</div></div>
-            <div class="stat-card"><h3>Outdated</h3><div class="value">${env.OUTDATED_COUNT}</div></div>
-            <div class="stat-card"><h3>Risk Score</h3><div class="value">${env.RISK_SCORE}/100</div></div>
+            <div class="stat-card">
+                <h3>Total Plugins</h3>
+                <div class="value" id="totalCount">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Vulnerabilities</h3>
+                <div class="value" style="color: ${env.VULN_COUNT?.toInteger() > 0 ? 'var(--danger)' : 'var(--success)'};">${env.VULN_COUNT}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Outdated</h3>
+                <div class="value" style="color: var(--warning);">${env.OUTDATED_COUNT}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Risk Score</h3>
+                <div class="value" style="color: ${(env.RISK_SCORE?.toInteger() ?: 0) < 30 ? 'var(--success)' : (env.RISK_SCORE?.toInteger() ?: 0) < 70 ? 'var(--warning)' : 'var(--danger)'};">${env.RISK_SCORE}<span style="font-size:24px;color:var(--text-muted);">/100</span></div>
+            </div>
         </div>
         
         <div class="section" id="vulnSection" style="display:none;">
-            <h2>🚨 Vulnerabilities</h2>
+            <h2>🚨 Security Vulnerabilities</h2>
             <table id="vulnTable">
-                <thead><tr><th>Plugin</th><th>Version</th><th>CVE</th><th>Severity</th><th>Description</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th style="width: 20%;">Plugin</th>
+                        <th style="width: 12%;">Version</th>
+                        <th style="width: 15%;">CVE</th>
+                        <th style="width: 10%;">Severity</th>
+                        <th style="width: 43%;">Description</th>
+                    </tr>
+                </thead>
                 <tbody></tbody>
             </table>
         </div>
         
         <div class="section">
-            <h2>📋 All Plugins</h2>
+            <h2>📦 Installed Plugins</h2>
             <table>
                 <thead>
                     <tr>
-                        <th>Plugin Name</th>
-                        <th>Short Name</th>
-                        <th>Version</th>
-                        <th>Status</th>
-                        <th>Developers</th>
-                        <th>Jenkins Ver</th>
-                        <th>Dependencies</th>
+                        <th style="width: 25%;">Plugin Name</th>
+                        <th style="width: 15%;">Short Name</th>
+                        <th style="width: 12%;">Version</th>
+                        <th style="width: 10%;">Status</th>
+                        <th style="width: 20%;">Developers</th>
+                        <th style="width: 10%;">Jenkins Ver</th>
+                        <th style="width: 8%;">Dependencies</th>
                     </tr>
                 </thead>
                 <tbody id="tbody"></tbody>
             </table>
             <div class="pagination">
-                <div id="info"></div>
-                <div>
+                <div class="pagination-info" id="info"></div>
+                <div class="pagination-buttons">
                     <button onclick="p=1;r()" id="btnFirst">First</button>
-                    <button onclick="p--;r()" id="btnPrev">Prev</button>
+                    <button onclick="p--;r()" id="btnPrev">Previous</button>
                     <button onclick="p++;r()" id="btnNext">Next</button>
                     <button onclick="p=tp;r()" id="btnLast">Last</button>
                 </div>
@@ -104,15 +351,13 @@ def generateReports() {
         
         let p=1, pp=50, tp=Math.ceil(data.length/pp);
         
-        // Update total count
         document.getElementById('totalCount').textContent = data.length;
         
-        // Show vulnerabilities if any
         if(vulns.length > 0) {
             document.getElementById('vulnSection').style.display = 'block';
             const tbody = document.getElementById('vulnTable').querySelector('tbody');
             tbody.innerHTML = vulns.map(v => 
-                '<tr><td><strong>'+e(v.plugin)+'</strong></td><td>'+e(v.version)+'</td><td>'+e(v.cve)+'</td>'+
+                '<tr><td><strong>'+e(v.plugin)+'</strong></td><td>'+e(v.version)+'</td><td><code>'+e(v.cve)+'</code></td>'+
                 '<td><span class="badge badge-'+v.severity.toLowerCase()+'">'+e(v.severity)+'</span></td>'+
                 '<td>'+e(v.description)+'</td></tr>'
             ).join('');
@@ -130,13 +375,13 @@ def generateReports() {
                 '<td><code>'+e(x.shortName)+'</code></td>'+
                 '<td>'+e(x.version)+'</td>'+
                 '<td><span class="badge badge-'+(x.enabled?'enabled">ENABLED':'disabled">DISABLED')+'</span></td>'+
-                '<td>'+e(x.developerNames||'Unknown')+'</td>'+
+                '<td>'+e((x.developerNames||'Unknown').split(':')[0])+'</td>'+
                 '<td>'+e(x.jenkinsVersion||'-')+'</td>'+
-                '<td>'+(x.dependencyCount||0)+'</td>'+
+                '<td style="text-align:center;">'+(x.dependencyCount||0)+'</td>'+
                 '</tr>'
             ).join('');
             
-            document.getElementById('info').textContent = 'Showing '+(s+1)+'-'+Math.min(e1,data.length)+' of '+data.length+' plugins (Page '+p+'/'+tp+')';
+            document.getElementById('info').textContent = 'Showing '+(s+1)+'-'+Math.min(e1,data.length)+' of '+data.length+' plugins (Page '+p+' of '+tp+')';
             
             document.getElementById('btnFirst').disabled = (p === 1);
             document.getElementById('btnPrev').disabled = (p === 1);
