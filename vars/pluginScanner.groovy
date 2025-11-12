@@ -23,71 +23,107 @@ def getPluginData() {
     return plugins.collect { plugin ->
         def pluginInfo = updateCenter.getPlugin(plugin.shortName)
         
-        // Extract additional metadata
-        def metadata = [
-            shortName: plugin.shortName,
-            longName: plugin.longName,
-            version: plugin.version.toString(),
-            enabled: plugin.enabled,
-            active: plugin.active,
-            hasUpdate: plugin.hasUpdate(),
-            pinned: plugin.pinned,
-            deleted: plugin.deleted,
-            downgradable: plugin.downgradable,
+        try {
+            // Extract additional metadata with completely safe property access
+            def metadata = [
+                shortName: plugin.shortName,
+                longName: plugin.longName,
+                version: plugin.version.toString(),
+                enabled: plugin.enabled,
+                active: plugin.active,
+                hasUpdate: plugin.hasUpdate(),
+                
+                // Status flags - completely safe access
+                pinned: getSafeProperty(plugin, 'pinned'),
+                deleted: getSafeProperty(plugin, 'deleted'),
+                downgradable: getSafeProperty(plugin, 'downgradable'),
+                bundled: getSafeProperty(plugin, 'bundled'),
+                
+                // URLs and references
+                url: plugin.url,
+                scmUrl: pluginInfo?.scm?.toString() ?: null,
+                issueTrackerUrl: pluginInfo?.issueTrackerUrl?.toString() ?: null,
+                wikiUrl: pluginInfo?.wiki?.toString() ?: null,
+                
+                // Maintainers and developers
+                developers: pluginInfo?.developers?.collect { dev ->
+                    [
+                        name: dev.name ?: 'Unknown',
+                        email: dev.email ?: null,
+                        id: dev.developerId ?: null
+                    ]
+                } ?: [],
+                
+                // Release information
+                releaseTimestamp: pluginInfo?.releaseTimestamp?.toString() ?: null,
+                buildDate: getSafeManifestAttribute(plugin, 'Build-Date'),
+                
+                // Dependencies
+                dependencies: plugin.dependencies.collect { dep ->
+                    [
+                        shortName: dep.shortName,
+                        version: dep.version.toString(),
+                        optional: dep.optional
+                    ]
+                },
+                
+                // Technical details
+                requiredCoreVersion: pluginInfo?.requiredCore?.toString() ?: 
+                                   plugin.requiredCoreVersion?.toString() ?: 
+                                   'Unknown',
+                
+                // Categories/Labels
+                labels: pluginInfo?.labels?.collect { it.toString() } ?: [],
+                
+                // Popularity metrics (if available)
+                popularity: pluginInfo?.popularity ?: null,
+                
+                // License
+                license: pluginInfo?.license?.name?.toString() ?: 'Unknown',
+                licenseUrl: pluginInfo?.license?.url?.toString() ?: null,
+                
+                // Description
+                excerpt: pluginInfo?.excerpt?.toString() ?: null,
+            ]
             
-            // URLs and references
-            url: plugin.url,
-            scmUrl: pluginInfo?.scm?.toString() ?: null,
-            issueTrackerUrl: pluginInfo?.issueTrackerUrl?.toString() ?: null,
-            wikiUrl: pluginInfo?.wiki?.toString() ?: null,
-            
-            // Maintainers and developers
-            developers: pluginInfo?.developers?.collect { dev ->
-                [
-                    name: dev.name ?: 'Unknown',
-                    email: dev.email ?: null,
-                    id: dev.developerId ?: null
-                ]
-            } ?: [],
-            
-            // Release information
-            releaseTimestamp: pluginInfo?.releaseTimestamp?.toString() ?: null,
-            buildDate: plugin.manifest?.mainAttributes?.getValue('Build-Date') ?: null,
-            
-            // Dependencies
-            dependencies: plugin.dependencies.collect { dep ->
-                [
-                    shortName: dep.shortName,
-                    version: dep.version.toString(),
-                    optional: dep.optional
-                ]
-            },
-            
-            // Technical details
-            bundled: plugin.bundled,
-            supportsDynamicLoad: plugin.supportsDynamicLoad.toString(),
-            requiredCoreVersion: pluginInfo?.requiredCore?.toString() ?: plugin.requiredCoreVersion?.toString() ?: 'Unknown',
-            
-            // File information - FIXED: Use getArchive() method instead of wrapper.archive
-            archive: plugin.getArchive()?.toString() ?: null,
-            backupVersion: plugin.getBackupVersion()?.toString() ?: null,
-            
-            // Categories/Labels
-            labels: pluginInfo?.labels?.collect { it.toString() } ?: [],
-            
-            // Popularity metrics (if available)
-            popularity: pluginInfo?.popularity ?: null,
-            installCount: pluginInfo?.popularity?.toString() ?: null,
-            
-            // License
-            license: pluginInfo?.license?.name?.toString() ?: 'Unknown',
-            licenseUrl: pluginInfo?.license?.url?.toString() ?: null,
-            
-            // Description
-            excerpt: pluginInfo?.excerpt?.toString() ?: null,
-        ]
-        
-        return metadata
+            return metadata
+        } catch (Exception e) {
+            // If any error occurs, return minimal metadata
+            echo "⚠️ Error getting metadata for ${plugin.shortName}: ${e.message}"
+            return [
+                shortName: plugin.shortName,
+                longName: plugin.longName,
+                version: plugin.version.toString(),
+                enabled: plugin.enabled,
+                active: plugin.active,
+                hasUpdate: false,
+                developers: [],
+                dependencies: [],
+                labels: []
+            ]
+        }
+    }
+}
+
+@NonCPS
+private Object getSafeProperty(object, String propertyName) {
+    try {
+        def metaProperty = object.metaClass.getMetaProperty(propertyName)
+        if (metaProperty != null) {
+            return metaProperty.getProperty(object)
+        }
+        return null
+    } catch (Exception e) {
+        return null
+    }
+}
+
+@NonCPS
+private String getSafeManifestAttribute(plugin, String attributeName) {
+    try {
+        return plugin.manifest?.mainAttributes?.getValue(attributeName) ?: null
+    } catch (Exception e) {
+        return null
     }
 }
 
