@@ -18,6 +18,10 @@ def generateReports() {
     def outdatedCount = env.OUTDATED_COUNT?.toInteger() ?: 0
     def riskScore = env.RISK_SCORE?.toInteger() ?: 0
     
+    // Determine CSS classes based on data
+    def vulnColorClass = vulnCount > 0 ? 'color-danger' : 'color-success'
+    def riskColorClass = riskScore < 30 ? 'color-success' : (riskScore < 70 ? 'color-warning' : 'color-danger')
+    
     def html = new StringBuilder()
     html << """<!DOCTYPE html>
 <html lang="en">
@@ -110,6 +114,15 @@ def generateReports() {
             line-height: 1;
         }
         
+        .color-success { color: var(--success); }
+        .color-warning { color: var(--warning); }
+        .color-danger { color: var(--danger); }
+        
+        .value-suffix { 
+            font-size: 24px;
+            color: var(--text-muted);
+        }
+        
         .section { 
             background: var(--card-bg);
             padding: 36px;
@@ -167,6 +180,16 @@ def generateReports() {
         tbody tr:hover { background: #f8f9fc; }
         tbody tr:last-child td { border-bottom: none; }
         
+        .td-center { text-align: center; }
+        
+        .col-25 { width: 25%; }
+        .col-20 { width: 20%; }
+        .col-15 { width: 15%; }
+        .col-12 { width: 12%; }
+        .col-10 { width: 10%; }
+        .col-8 { width: 8%; }
+        .col-43 { width: 43%; }
+        
         .badge { 
             display: inline-block;
             padding: 6px 12px;
@@ -215,15 +238,15 @@ def generateReports() {
             </div>
             <div class="stat-card">
                 <h3>Vulnerabilities</h3>
-                <div class="value" style="color: ${vulnCount > 0 ? 'var(--danger)' : 'var(--success)'};">${vulnCount}</div>
+                <div class="value ${vulnColorClass}">${vulnCount}</div>
             </div>
             <div class="stat-card">
                 <h3>Outdated</h3>
-                <div class="value" style="color: var(--warning);">${outdatedCount}</div>
+                <div class="value color-warning">${outdatedCount}</div>
             </div>
             <div class="stat-card">
                 <h3>Risk Score</h3>
-                <div class="value" style="color: ${riskScore < 30 ? 'var(--success)' : (riskScore < 70 ? 'var(--warning)' : 'var(--danger)')};">${riskScore}<span style="font-size:24px;color:var(--text-muted);">/100</span></div>
+                <div class="value ${riskColorClass}">${riskScore}<span class="value-suffix">/100</span></div>
             </div>
         </div>
 """
@@ -235,11 +258,11 @@ def generateReports() {
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 20%;">Plugin</th>
-                        <th style="width: 12%;">Version</th>
-                        <th style="width: 15%;">CVE</th>
-                        <th style="width: 10%;">Severity</th>
-                        <th style="width: 43%;">Description</th>
+                        <th class="col-20">Plugin</th>
+                        <th class="col-12">Version</th>
+                        <th class="col-15">CVE</th>
+                        <th class="col-10">Severity</th>
+                        <th class="col-43">Description</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -268,13 +291,13 @@ def generateReports() {
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 25%;">Plugin Name</th>
-                        <th style="width: 15%;">Short Name</th>
-                        <th style="width: 12%;">Version</th>
-                        <th style="width: 10%;">Status</th>
-                        <th style="width: 20%;">Developers</th>
-                        <th style="width: 10%;">Jenkins Ver</th>
-                        <th style="width: 8%;">Dependencies</th>
+                        <th class="col-25">Plugin Name</th>
+                        <th class="col-15">Short Name</th>
+                        <th class="col-12">Version</th>
+                        <th class="col-10">Status</th>
+                        <th class="col-20">Developers</th>
+                        <th class="col-10">Jenkins Ver</th>
+                        <th class="col-8">Dependencies</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -282,17 +305,18 @@ def generateReports() {
 
     plugins.each { p ->
         def devName = (p.developerNames ?: 'Unknown').toString().split(':')[0]
-        def statusBadge = p.enabled ? 'enabled">ENABLED' : 'disabled">DISABLED'
+        def statusBadge = p.enabled ? 'enabled' : 'disabled'
+        def statusText = p.enabled ? 'ENABLED' : 'DISABLED'
         
         html << """
                     <tr>
                         <td><strong>${escapeHtml(p.longName)}</strong></td>
                         <td><code>${escapeHtml(p.shortName)}</code></td>
                         <td>${escapeHtml(p.version)}</td>
-                        <td><span class="badge badge-${statusBadge}</span></td>
+                        <td><span class="badge badge-${statusBadge}">${statusText}</span></td>
                         <td>${escapeHtml(devName)}</td>
                         <td>${escapeHtml(p.jenkinsVersion ?: '-')}</td>
-                        <td style="text-align:center;">${p.dependencyCount ?: 0}</td>
+                        <td class="td-center">${p.dependencyCount ?: 0}</td>
                     </tr>
 """
     }
