@@ -21,11 +21,12 @@ def getPluginData() {
     def plugins = pluginManager.plugins
     
     return plugins.collect { plugin ->
-        def pluginInfo = updateCenter.getPlugin(plugin.shortName)
-        
         try {
-            // Extract additional metadata with completely safe property access
+            def pluginInfo = updateCenter.getPlugin(plugin.shortName)
+            
+            // Extract metadata with completely safe property access
             def metadata = [
+                // Basic information - always available
                 shortName: plugin.shortName,
                 longName: plugin.longName,
                 version: plugin.version.toString(),
@@ -33,32 +34,28 @@ def getPluginData() {
                 active: plugin.active,
                 hasUpdate: plugin.hasUpdate(),
                 
-                // Status flags - completely safe access
+                // Status flags - safe access
                 pinned: getSafeProperty(plugin, 'pinned'),
                 deleted: getSafeProperty(plugin, 'deleted'),
                 downgradable: getSafeProperty(plugin, 'downgradable'),
                 bundled: getSafeProperty(plugin, 'bundled'),
                 
-                // URLs and references
+                // URLs - from PluginWrapper
                 url: plugin.url,
-                scmUrl: pluginInfo?.scm?.toString() ?: null,
-                issueTrackerUrl: pluginInfo?.issueTrackerUrl?.toString() ?: null,
-                wikiUrl: pluginInfo?.wiki?.toString() ?: null,
                 
-                // Maintainers and developers
-                developers: pluginInfo?.developers?.collect { dev ->
-                    [
-                        name: dev.name ?: 'Unknown',
-                        email: dev.email ?: null,
-                        id: dev.developerId ?: null
-                    ]
-                } ?: [],
+                // URLs - from UpdateCenter (safe access)
+                scmUrl: getSafeUpdateCenterProperty(pluginInfo, 'scm'),
+                issueTrackerUrl: getSafeUpdateCenterProperty(pluginInfo, 'issueTrackerUrl'),
+                wikiUrl: getSafeUpdateCenterProperty(pluginInfo, 'wiki'),
+                
+                // Maintainers and developers - safe access
+                developers: getSafeDevelopers(pluginInfo),
                 
                 // Release information
-                releaseTimestamp: pluginInfo?.releaseTimestamp?.toString() ?: null,
+                releaseTimestamp: getSafeUpdateCenterProperty(pluginInfo, 'releaseTimestamp'),
                 buildDate: getSafeManifestAttribute(plugin, 'Build-Date'),
                 
-                // Dependencies
+                // Dependencies - always available
                 dependencies: plugin.dependencies.collect { dep ->
                     [
                         shortName: dep.shortName,
@@ -68,22 +65,22 @@ def getPluginData() {
                 },
                 
                 // Technical details
-                requiredCoreVersion: pluginInfo?.requiredCore?.toString() ?: 
+                requiredCoreVersion: getSafeUpdateCenterProperty(pluginInfo, 'requiredCore') ?: 
                                    plugin.requiredCoreVersion?.toString() ?: 
                                    'Unknown',
                 
-                // Categories/Labels
-                labels: pluginInfo?.labels?.collect { it.toString() } ?: [],
+                // Categories/Labels - safe access
+                labels: getSafeLabels(pluginInfo),
                 
-                // Popularity metrics (if available)
-                popularity: pluginInfo?.popularity ?: null,
+                // Popularity metrics
+                popularity: getSafeUpdateCenterProperty(pluginInfo, 'popularity'),
                 
-                // License
-                license: pluginInfo?.license?.name?.toString() ?: 'Unknown',
-                licenseUrl: pluginInfo?.license?.url?.toString() ?: null,
+                // License - safe access
+                license: getSafeLicense(pluginInfo),
+                licenseUrl: getSafeLicenseUrl(pluginInfo),
                 
                 // Description
-                excerpt: pluginInfo?.excerpt?.toString() ?: null,
+                excerpt: getSafeUpdateCenterProperty(pluginInfo, 'excerpt'),
             ]
             
             return metadata
@@ -108,6 +105,7 @@ def getPluginData() {
 @NonCPS
 private Object getSafeProperty(object, String propertyName) {
     try {
+        if (object == null) return null
         def metaProperty = object.metaClass.getMetaProperty(propertyName)
         if (metaProperty != null) {
             return metaProperty.getProperty(object)
@@ -119,9 +117,110 @@ private Object getSafeProperty(object, String propertyName) {
 }
 
 @NonCPS
+private Object getSafeUpdateCenterProperty(pluginInfo, String propertyName) {
+    try {
+        if (pluginInfo == null) return null
+        def metaProperty = pluginInfo.metaClass.getMetaProperty(propertyName)
+        if (metaProperty != null) {
+            def value = metaProperty.getProperty(pluginInfo)
+            return value?.toString()
+        }
+        return null
+    } catch (Exception e) {
+        return null
+    }
+}
+
+@NonCPS
 private String getSafeManifestAttribute(plugin, String attributeName) {
     try {
         return plugin.manifest?.mainAttributes?.getValue(attributeName) ?: null
+    } catch (Exception e) {
+        return null
+    }
+}
+
+@NonCPS
+private List getSafeDevelopers(pluginInfo) {
+    try {
+        if (pluginInfo == null) return []
+        
+        def devProperty = pluginInfo.metaClass.getMetaProperty('developers')
+        if (devProperty == null) return []
+        
+        def developers = devProperty.getProperty(pluginInfo)
+        if (developers == null || developers.isEmpty()) return []
+        
+        return developers.collect { dev ->
+            [
+                name: dev.name ?: 'Unknown',
+                email: dev.email ?: null,
+                id: dev.developerId ?: null
+            ]
+        }
+    } catch (Exception e) {
+        return []
+    }
+}
+
+@NonCPS
+private List getSafeLabels(pluginInfo) {
+    try {
+        if (pluginInfo == null) return []
+        
+        def labelProperty = pluginInfo.metaClass.getMetaProperty('labels')
+        if (labelProperty == null) return []
+        
+        def labels = labelProperty.getProperty(pluginInfo)
+        if (labels == null) return []
+        
+        return labels.collect { it.toString() }
+    } catch (Exception e) {
+        return []
+    }
+}
+
+@NonCPS
+private String getSafeLicense(pluginInfo) {
+    try {
+        if (pluginInfo == null) return 'Unknown'
+        
+        def licenseProperty = pluginInfo.metaClass.getMetaProperty('license')
+        if (licenseProperty == null) return 'Unknown'
+        
+        def license = licenseProperty.getProperty(pluginInfo)
+        if (license == null) return 'Unknown'
+        
+        // License might have a name property
+        def nameProperty = license.metaClass.getMetaProperty('name')
+        if (nameProperty != null) {
+            return nameProperty.getProperty(license)?.toString() ?: 'Unknown'
+        }
+        
+        return license.toString()
+    } catch (Exception e) {
+        return 'Unknown'
+    }
+}
+
+@NonCPS
+private String getSafeLicenseUrl(pluginInfo) {
+    try {
+        if (pluginInfo == null) return null
+        
+        def licenseProperty = pluginInfo.metaClass.getMetaProperty('license')
+        if (licenseProperty == null) return null
+        
+        def license = licenseProperty.getProperty(pluginInfo)
+        if (license == null) return null
+        
+        // License might have a url property
+        def urlProperty = license.metaClass.getMetaProperty('url')
+        if (urlProperty != null) {
+            return urlProperty.getProperty(license)?.toString()
+        }
+        
+        return null
     } catch (Exception e) {
         return null
     }
