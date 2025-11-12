@@ -1,7 +1,7 @@
 #!/usr/bin/env groovy
 
 def fetchInstalledPlugins() {
-    echo "📦 Fetching installed Jenkins plugins..."
+    echo "📦 Fetching installed Jenkins plugins with enhanced metadata..."
     
     def pluginData = getPluginData()
     
@@ -10,32 +10,84 @@ def fetchInstalledPlugins() {
     writeFile file: 'plugins.json', text: env.PLUGIN_DATA
     archiveArtifacts artifacts: 'plugins.json'
     
-    echo "✅ Found ${pluginData.size()} plugins"
+    echo "✅ Found ${pluginData.size()} plugins with enhanced metadata"
 }
 
 @NonCPS
 def getPluginData() {
     def jenkins = Jenkins.instance
     def pluginManager = jenkins.pluginManager
+    def updateCenter = jenkins.updateCenter
     def plugins = pluginManager.plugins
     
     return plugins.collect { plugin ->
-        [
+        def pluginInfo = updateCenter.getPlugin(plugin.shortName)
+        def wrapper = plugin.wrapper
+        
+        // Extract additional metadata
+        def metadata = [
             shortName: plugin.shortName,
             longName: plugin.longName,
             version: plugin.version.toString(),
             enabled: plugin.enabled,
             active: plugin.active,
             hasUpdate: plugin.hasUpdate(),
+            pinned: plugin.pinned,
+            deleted: plugin.deleted,
+            downgradable: plugin.downgradable,
+            
+            // URLs and references
             url: plugin.url,
+            scmUrl: pluginInfo?.scm?.toString() ?: null,
+            issueTrackerUrl: pluginInfo?.issueTrackerUrl?.toString() ?: null,
+            wikiUrl: pluginInfo?.wiki?.toString() ?: null,
+            
+            // Maintainers and developers
+            developers: pluginInfo?.developers?.collect { dev ->
+                [
+                    name: dev.name ?: 'Unknown',
+                    email: dev.email ?: null,
+                    id: dev.developerId ?: null
+                ]
+            } ?: [],
+            
+            // Release information
+            releaseTimestamp: pluginInfo?.releaseTimestamp?.toString() ?: null,
+            buildDate: plugin.manifest?.mainAttributes?.getValue('Build-Date') ?: null,
+            
+            // Dependencies
             dependencies: plugin.dependencies.collect { dep ->
                 [
                     shortName: dep.shortName,
                     version: dep.version.toString(),
                     optional: dep.optional
                 ]
-            }
+            },
+            
+            // Technical details
+            bundled: plugin.bundled,
+            supportsDynamicLoad: plugin.supportsDynamicLoad.toString(),
+            requiredCoreVersion: pluginInfo?.requiredCore?.toString() ?: plugin.requiredCoreVersion?.toString() ?: 'Unknown',
+            
+            // File information
+            archive: wrapper?.archive?.toString() ?: null,
+            
+            // Categories/Labels
+            labels: pluginInfo?.labels?.collect { it.toString() } ?: [],
+            
+            // Popularity metrics (if available)
+            popularity: pluginInfo?.popularity ?: null,
+            installCount: pluginInfo?.popularity?.toString() ?: null,
+            
+            // License
+            license: pluginInfo?.license?.name?.toString() ?: 'Unknown',
+            licenseUrl: pluginInfo?.license?.url?.toString() ?: null,
+            
+            // Description
+            excerpt: pluginInfo?.excerpt?.toString() ?: null,
         ]
+        
+        return metadata
     }
 }
 
@@ -57,25 +109,20 @@ def getSecurityWarnings() {
     
     echo "🔍 Checking each installed plugin for security warnings..."
     
-    // Check each plugin directly using the PluginManager and UpdateCenter
     pluginManager.plugins.each { plugin ->
         try {
-            // Get plugin info from Update Center
             def pluginEntry = updateCenter.getPlugin(plugin.shortName)
             
             if (pluginEntry != null) {
-                // Check if this plugin has warnings
                 if (pluginEntry.hasWarnings()) {
                     echo "⚠️ ${plugin.shortName} ${plugin.version} HAS WARNINGS"
                     
-                    // Get the warnings
                     def warnings = pluginEntry.getWarnings()
                     
                     if (warnings != null && !warnings.isEmpty()) {
                         warnings.each { warning ->
                             echo "   ID: ${warning.id} - ${warning.message?.take(50)}"
                             
-                            // Add to collection - THIS IS THE FIX
                             allWarnings.add([
                                 type: warning.type?.toString() ?: 'PLUGIN',
                                 id: warning.id?.toString() ?: 'UNKNOWN',
@@ -123,7 +170,6 @@ def scanVulnerabilities() {
     
     echo "📋 Checking ${pluginData.size()} plugins against ${securityWarnings.size()} security warnings"
     
-    // Match installed plugins against security warnings
     pluginData.each { plugin ->
         def matchingWarnings = securityWarnings.findAll { w -> w.name == plugin.shortName }
         
