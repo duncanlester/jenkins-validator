@@ -75,6 +75,7 @@ def generateReports() {
             font-weight: 700;
             margin-bottom: 16px;
             letter-spacing: -0.5px;
+            text-align: left;
         }
         
         .header-meta {
@@ -102,6 +103,7 @@ def generateReports() {
             color: var(--text);
             padding-bottom: 16px;
             border-bottom: 3px solid var(--primary);
+            text-align: left;
         }
         
         .section-header {
@@ -115,6 +117,7 @@ def generateReports() {
             margin-bottom: 0;
             border-bottom: none;
             padding-bottom: 0;
+            text-align: left;
         }
         
         .summary-grid {
@@ -138,12 +141,14 @@ def generateReports() {
             margin-bottom: 8px;
             font-weight: 600;
             letter-spacing: 0.5px;
+            text-align: left;
         }
         
         .summary-item .summary-value {
             font-size: 20px;
             font-weight: 700;
             color: var(--text);
+            text-align: left;
         }
         
         .color-success { color: var(--success); }
@@ -208,6 +213,7 @@ def generateReports() {
             border-bottom: 1px solid var(--border);
             border-right: 1px solid var(--border);
             vertical-align: middle;
+            text-align: left;
         }
         
         td:last-child { border-right: none; }
