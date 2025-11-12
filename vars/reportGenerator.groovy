@@ -3,55 +3,22 @@
 def generateReports() {
     echo "📝 Generating validation reports..."
     
-    def pluginData = readJSON text: env.PLUGIN_DATA
-    def vulnData = readJSON text: env.VULNERABILITIES
-    def outdatedData = readJSON text: env.OUTDATED_PLUGINS
+    // Read as plain text, not objects
+    def pluginJson = env.PLUGIN_DATA
+    def vulnJson = env.VULNERABILITIES
+    def outdatedJson = env.OUTDATED_PLUGINS
     
-    echo "📊 Generating report for ${pluginData.size()} plugins"
+    // Count plugins by parsing text
+    def pluginCount = (pluginJson =~ /"shortName"/).count
+    def vulnCount = env.VULN_COUNT
+    def outdatedCount = env.OUTDATED_COUNT
     
-    // Generate simple JSON report
-    def jsonReport = groovy.json.JsonOutput.prettyPrint(
-        groovy.json.JsonOutput.toJson([
-            timestamp: new Date().format('yyyy-MM-dd HH:mm:ss', TimeZone.getTimeZone('UTC')),
-            jenkins_version: Jenkins.instance.version.toString(),
-            total_plugins: pluginData.size(),
-            outdated_plugins: Integer.parseInt(env.OUTDATED_COUNT),
-            vulnerabilities: Integer.parseInt(env.VULN_COUNT),
-            critical_vulns: Integer.parseInt(env.CRITICAL_COUNT),
-            high_vulns: Integer.parseInt(env.HIGH_COUNT),
-            medium_vulns: Integer.parseInt(env.MEDIUM_COUNT),
-            risk_score: Integer.parseInt(env.RISK_SCORE),
-            risk_rating: env.RISK_RATING,
-            plugins: pluginData,
-            vulnerable_plugins: vulnData,
-            outdated_plugins_list: outdatedData
-        ])
-    )
+    echo "📊 Generating report for ${pluginCount} plugins"
     
-    writeFile file: 'plugin-validation-report.json', text: jsonReport
+    // Write JSON directly without re-serializing
+    writeFile file: 'plugin-validation-report.json', text: pluginJson
     
-    // Generate HTML report WITHOUT accessing plugin objects
-    generateHTMLFromJSON(pluginData, vulnData, outdatedData)
-    
-    archiveArtifacts artifacts: '*.html,*.json'
-    
-    try {
-        publishHTML([
-            allowMissing: false,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: '.',
-            reportFiles: 'plugin-validation-report.html',
-            reportName: 'Plugin Validation Report'
-        ])
-    } catch (Exception e) {
-        echo "⚠️ HTML Publisher not available"
-    }
-    
-    echo "✅ Reports generated successfully!"
-}
-
-def generateHTMLFromJSON(plugins, vulnerabilities, outdated) {
+    // Generate HTML using raw JSON strings
     def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss', TimeZone.getTimeZone('UTC'))
     def jenkinsVersion = Jenkins.instance.version.toString()
     
@@ -98,23 +65,15 @@ def generateHTMLFromJSON(plugins, vulnerabilities, outdated) {
         </div>
         
         <div class="stats">
-            <div class="stat-card"><h3>Total Plugins</h3><div class="value">${plugins.size()}</div></div>
-            <div class="stat-card"><h3>Vulnerabilities</h3><div class="value">${vulnerabilities.size()}</div></div>
-            <div class="stat-card"><h3>Outdated</h3><div class="value">${outdated.size()}</div></div>
+            <div class="stat-card"><h3>Total Plugins</h3><div class="value">${pluginCount}</div></div>
+            <div class="stat-card"><h3>Vulnerabilities</h3><div class="value">${vulnCount}</div></div>
+            <div class="stat-card"><h3>Outdated</h3><div class="value">${outdatedCount}</div></div>
             <div class="stat-card"><h3>Risk Score</h3><div class="value">${env.RISK_SCORE}/100</div></div>
         </div>
         
-        ${vulnerabilities.size() > 0 ? """
         <div class="section">
-            <h2>🚨 Vulnerabilities (${vulnerabilities.size()})</h2>
-            <table><thead><tr><th>Plugin</th><th>Version</th><th>CVE</th><th>Severity</th><th>Description</th></tr></thead>
-            <tbody>${vulnerabilities.collect { v -> "<tr><td><strong>${esc(v.plugin)}</strong></td><td>${esc(v.version)}</td><td>${esc(v.cve)}</td><td><span class='badge badge-${v.severity.toLowerCase()}'>${esc(v.severity)}</span></td><td>${esc(v.description ?: 'N/A')}</td></tr>" }.join('')}</tbody></table>
-        </div>
-        """ : '<div class="section"><h2>✅ No Vulnerabilities</h2></div>'}
-        
-        <div class="section">
-            <h2>📋 All Plugins (${plugins.size()})</h2>
-            <table id="pluginTable">
+            <h2>📋 All Plugins (${pluginCount})</h2>
+            <table>
                 <thead>
                     <tr>
                         <th>Plugin Name</th>
@@ -138,10 +97,18 @@ def generateHTMLFromJSON(plugins, vulnerabilities, outdated) {
                 <div><button onclick="p=1;r()">First</button><button onclick="p--;r()">Prev</button><button onclick="p++;r()">Next</button><button onclick="p=tp;r()">Last</button></div>
             </div>
         </div>
+        
+        <div class="section">
+            <h2>🚨 Vulnerabilities</h2>
+            <div id="vulns"></div>
+        </div>
     </div>
     <script>
-        const data = ${groovy.json.JsonOutput.toJson(plugins)};
+        const data = ${pluginJson};
+        const vulns = ${vulnJson};
+        
         let p=1, pp=50, tp=Math.ceil(data.length/pp);
+        
         function r(){
             if(p<1)p=1; if(p>tp)p=tp;
             const s=(p-1)*pp, e=s+pp, pg=data.slice(s,e);
@@ -159,6 +126,15 @@ def generateHTMLFromJSON(plugins, vulnerabilities, outdated) {
             ).join('');
             document.getElementById('info').textContent='Showing '+(s+1)+'-'+Math.min(e,data.length)+' of '+data.length+' (Page '+p+'/'+tp+')';
         }
+        
+        if(vulns.length > 0) {
+            document.getElementById('vulns').innerHTML = '<table><thead><tr><th>Plugin</th><th>CVE</th><th>Severity</th><th>Description</th></tr></thead><tbody>' +
+                vulns.map(v => '<tr><td>'+e(v.plugin)+'</td><td>'+e(v.cve)+'</td><td><span class="badge badge-'+v.severity.toLowerCase()+'">'+e(v.severity)+'</span></td><td>'+e(v.description)+'</td></tr>').join('') +
+                '</tbody></table>';
+        } else {
+            document.getElementById('vulns').innerHTML = '<p>✅ No vulnerabilities detected</p>';
+        }
+        
         function e(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
         r();
     </script>
@@ -166,11 +142,23 @@ def generateHTMLFromJSON(plugins, vulnerabilities, outdated) {
 </html>"""
     
     writeFile file: 'plugin-validation-report.html', text: html
-}
-
-@NonCPS
-private String esc(obj) {
-    return obj?.toString()?.replaceAll('<', '&lt;')?.replaceAll('>', '&gt;')?.replaceAll('"', '&quot;') ?: ''
+    
+    archiveArtifacts artifacts: '*.html,*.json'
+    
+    try {
+        publishHTML([
+            allowMissing: false,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: '.',
+            reportFiles: 'plugin-validation-report.html',
+            reportName: 'Plugin Validation Report'
+        ])
+    } catch (Exception e) {
+        echo "⚠️ HTML Publisher not available"
+    }
+    
+    echo "✅ Reports generated successfully!"
 }
 
 def sendSuccessNotification() {
