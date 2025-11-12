@@ -1,7 +1,7 @@
 #!/usr/bin/env groovy
 
 def fetchInstalledPlugins() {
-    echo "📦 Fetching ALL plugin metadata..."
+    echo "📦 Fetching plugin metadata (PluginWrapper + Manifest only)..."
     def pluginData = getPluginData()
     env.PLUGIN_DATA = groovy.json.JsonOutput.toJson(pluginData)
     writeFile file: 'plugins.json', text: env.PLUGIN_DATA
@@ -13,49 +13,48 @@ def fetchInstalledPlugins() {
 def getPluginData() {
     def jenkins = Jenkins.instance
     def plugins = jenkins.pluginManager.plugins
-    def updateCenter = jenkins.updateCenter
     
     return plugins.collect { p ->
-        def m = [
-            shortName: p.shortName,
-            longName: p.longName,
-            version: p.version.toString(),
-            enabled: p.enabled,
-            active: p.active,
-            hasUpdate: p.hasUpdate(),
-            url: p.url
-        ]
+        def m = [:]
+        
+        // PluginWrapper fields - always safe
+        m.shortName = p.shortName
+        m.longName = p.longName
+        m.version = p.version.toString()
+        m.enabled = p.enabled
+        m.active = p.active
+        m.hasUpdate = p.hasUpdate()
+        m.url = p.url
         
         try { m.bundled = p.isBundled() } catch (e) { m.bundled = false }
         try { m.pinned = p.isPinned() } catch (e) { m.pinned = false }
         
-        m.dependencies = p.dependencies.collect { d -> [shortName: d.shortName, version: d.version.toString(), optional: d.optional] }
+        // Dependencies
+        m.dependencies = p.dependencies.collect { d -> 
+            [shortName: d.shortName, version: d.version.toString(), optional: d.optional] 
+        }
         m.dependencyCount = m.dependencies.size()
         
+        // Manifest data ONLY - no UpdateCenter access at all
         try {
             def attrs = p.manifest?.mainAttributes
             if (attrs) {
                 m.buildDate = attrs.getValue('Build-Date')
                 m.builtBy = attrs.getValue('Built-By')
                 m.jenkinsVersion = attrs.getValue('Jenkins-Version')
+                m.pluginVersion = attrs.getValue('Plugin-Version')
+                m.extensionName = attrs.getValue('Extension-Name')
+                m.implementationTitle = attrs.getValue('Implementation-Title')
+                m.implementationVersion = attrs.getValue('Implementation-Version')
                 m.pluginDevelopers = attrs.getValue('Plugin-Developers')
-                m.url_manifest = attrs.getValue('Url')
+                m.supportDynamicLoading = attrs.getValue('Support-Dynamic-Loading')
+                m.manifestUrl = attrs.getValue('Url')
+                m.groupId = attrs.getValue('Group-Id')
+                m.pluginDependencies = attrs.getValue('Plugin-Dependencies')
             }
         } catch (e) {}
         
-        try {
-            def pi = updateCenter.getPlugin(p.shortName)
-            if (pi) {
-                try { m.scm = pi.scm?.toString() } catch (e) {}
-                try { m.wiki = pi.wiki?.toString() } catch (e) {}
-                try { m.issueTrackerUrl = pi.issueTrackerUrl?.toString() } catch (e) {}
-                try { m.excerpt = pi.excerpt?.toString() } catch (e) {}
-                try { m.requiredCore = pi.requiredCore?.toString() } catch (e) {}
-                try { m.releaseTimestamp = pi.releaseTimestamp?.toString() } catch (e) {}
-            }
-        } catch (e) {}
-        
-        m.developerNames = m.pluginDevelopers ?: 'Unknown'
+        m.developerNames = m.pluginDevelopers ?: m.builtBy ?: 'Unknown'
         
         return m
     }
