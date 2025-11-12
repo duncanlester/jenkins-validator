@@ -1,37 +1,19 @@
-@Library('plugin-validator') _
+@Library('jenkins-plugin-validator') _
 
 pipeline {
     agent any
     
-    parameters {
-        choice(
-            name: 'REPORT_FORMAT',
-            choices: ['html', 'json', 'xml', 'all'],
-            description: 'Report format to generate'
-        )
-        booleanParam(
-            name: 'GENERATE_SBOM',
-            defaultValue: true,
-            description: 'Generate Software Bill of Materials'
-        )
-    }
-    
-    triggers {
-        cron('0 2 * * *')
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
     }
     
     stages {
-        stage('Fetch Plugins') {
+        stage('Scan Plugins') {
             steps {
                 script {
                     pluginScanner.fetchInstalledPlugins()
-                }
-            }
-        }
-        
-        stage('Fetch Security Warnings') {
-            steps {
-                script {
                     pluginScanner.fetchSecurityWarnings()
                 }
             }
@@ -45,7 +27,7 @@ pipeline {
             }
         }
         
-        stage('Scan for Vulnerabilities') {
+        stage('Scan Vulnerabilities') {
             steps {
                 script {
                     pluginScanner.scanVulnerabilities()
@@ -53,10 +35,15 @@ pipeline {
             }
         }
         
-        stage('Generate SBOM') {
-            when {
-                expression { params.GENERATE_SBOM }
+        stage('Calculate Risk Score') {
+            steps {
+                script {
+                    riskCalculator.calculateRiskScore()
+                }
             }
+        }
+        
+        stage('Generate SBOM') {
             steps {
                 script {
                     sbomGenerator.generateSBOM()
@@ -64,18 +51,19 @@ pipeline {
             }
         }
         
-        stage('Calculate Risk Score') {
+        stage('Generate Reports') {
             steps {
                 script {
-                    riskCalculator.calculateRisk()
+                    reportGenerator.generateReports()
                 }
             }
         }
         
-        stage('Generate Report') {
+        stage('Send Notifications') {
             steps {
                 script {
-                    reportGenerator.generateReports()
+                    reportGenerator.sendSuccessNotification()
+                    reportGenerator.sendSecurityAlert()
                 }
             }
         }
@@ -83,21 +71,14 @@ pipeline {
     
     post {
         always {
-            script {
-                echo "🧹 Cleanup complete"
-            }
+            echo "🏁 Plugin validation complete"
+            echo "📊 Build Status: ${currentBuild.result ?: 'SUCCESS'}"
         }
-        
-        success {
-            script {
-                reportGenerator.sendSuccessNotification()
-            }
-        }
-        
         unstable {
-            script {
-                reportGenerator.sendSecurityAlert()
-            }
+            echo "⚠️  UNSTABLE: Security vulnerabilities detected - review required"
+        }
+        success {
+            echo "✅ SUCCESS: All plugins validated, no security issues"
         }
     }
 }
