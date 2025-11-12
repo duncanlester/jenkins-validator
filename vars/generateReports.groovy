@@ -48,18 +48,6 @@ def call() {
             escapeUnderscores: true,
             includes: '**/*'
         ])
-        
-        echo ""
-        echo "================================================"
-        echo "📊 Report published!"
-        echo "================================================"
-        echo "View in Jenkins: ${buildUrl}Plugin_20Validation_20Report/"
-        echo ""
-        echo "⚠️  NOTE: Links are blocked by Jenkins sandbox."
-        echo "To view CVE details, download the report as artifact:"
-        echo "${buildUrl}artifact/plugin-validation-report.html"
-        echo "================================================"
-        
     } catch (Exception e) {
         echo "⚠️ HTML Publisher not available: ${e.message}"
     }
@@ -79,26 +67,9 @@ def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCo
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Jenkins Plugin Validation Report</title>
     <link rel="stylesheet" href="report-style.css">
-    <script>
-        // Workaround for sandboxed iframe link blocking
-        function openLink(url) {
-            // Try to open in parent window
-            if (window.parent && window.parent !== window) {
-                window.parent.open(url, '_blank');
-            } else {
-                window.open(url, '_blank');
-            }
-            return false;
-        }
-    </script>
 </head>
 <body>
     <div class="container">
-        <div class="notice-box">
-            <strong>📌 Note:</strong> If links don't work, download this report as an artifact and open it in your browser:
-            <br><code>${buildUrl}artifact/plugin-validation-report.html</code>
-        </div>
-        
         <div class="header">
             <h1>🔒 Jenkins Plugin Validation Report</h1>
             <div class="header-meta">
@@ -129,8 +100,8 @@ def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCo
                 </div>
             </div>
             <div class="links-group">
-                <a href="${buildUrl}" class="issue-link">📋 View Build Details</a>
-                <a href="${buildUrl}console" class="issue-link">📄 View Console Output</a>
+                <a href="${buildUrl}">📋 View Build Details</a>
+                <a href="${buildUrl}console">📄 View Console Output</a>
             </div>
         </div>
 """
@@ -167,12 +138,7 @@ def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCo
                         <td><code>${cveId}</code></td>
                         <td><span class="badge badge-${v.severity.toLowerCase()}">${escapeHtml(v.severity)}</span></td>
                         <td>${escapeHtml(v.description)}</td>
-                        <td>
-                            <button onclick="window.open('${cveUrl}', '_blank'); return false;" class="link-button">
-                                View Details →
-                            </button>
-                            <div class="url-copy">${cveUrl}</div>
-                        </td>
+                        <td><a href="${cveUrl}">View CVE</a></td>
                     </tr>
 """
         }
