@@ -1,7 +1,7 @@
 #!/usr/bin/env groovy
 
 def fetchInstalledPlugins() {
-    echo "📦 Fetching installed Jenkins plugins with ALL available metadata..."
+    echo "📦 Fetching installed Jenkins plugins with ALL safe metadata..."
     
     def pluginData = getPluginData()
     
@@ -20,18 +20,13 @@ def getPluginData() {
     def updateCenter = jenkins.updateCenter
     def plugins = pluginManager.plugins
     
+    echo "📊 Processing ${plugins.size()} plugins with full metadata extraction..."
+    
     return plugins.collect { plugin ->
         try {
-            def pluginInfo = null
-            try {
-                pluginInfo = updateCenter.getPlugin(plugin.shortName)
-            } catch (Exception e) {
-                // UpdateCenter not available for this plugin
-            }
-            
             def metadata = [:]
             
-            // Basic info - always available
+            // Basic plugin wrapper data - always safe
             metadata.shortName = plugin.shortName
             metadata.longName = plugin.longName
             metadata.version = plugin.version.toString()
@@ -39,6 +34,10 @@ def getPluginData() {
             metadata.active = plugin.active
             metadata.hasUpdate = plugin.hasUpdate()
             metadata.url = plugin.url
+            
+            // Try to get bundled/pinned status safely
+            try { metadata.bundled = plugin.isBundled() } catch (Exception e) { metadata.bundled = false }
+            try { metadata.pinned = plugin.isPinned() } catch (Exception e) { metadata.pinned = false }
             
             // Dependencies
             metadata.dependencies = plugin.dependencies.collect { dep ->
@@ -48,64 +47,86 @@ def getPluginData() {
                     optional: dep.optional
                 ]
             }
+            metadata.dependencyCount = metadata.dependencies.size()
             
-            // Try to get additional metadata from UpdateCenter
-            if (pluginInfo != null) {
-                try {
-                    // Get all available properties from pluginInfo
-                    def props = pluginInfo.getClass().getDeclaredFields()
-                    
-                    props.each { field ->
-                        try {
-                            field.setAccessible(true)
-                            def value = field.get(pluginInfo)
-                            if (value != null) {
-                                def fieldName = field.name
-                                
-                                // Handle specific types
-                                if (fieldName == 'developers' && value instanceof Collection) {
-                                    metadata.developers = value.collect { dev ->
-                                        [
-                                            name: dev.name ?: 'Unknown',
-                                            email: dev.email ?: null,
-                                            id: dev.developerId ?: null
-                                        ]
-                                    }
-                                } else if (fieldName == 'labels' && value instanceof Collection) {
-                                    metadata.labels = value.collect { it.toString() }
-                                } else if (fieldName in ['scm', 'wiki', 'issueTrackerUrl', 'excerpt']) {
-                                    metadata[fieldName] = value.toString()
-                                } else if (fieldName == 'releaseTimestamp') {
-                                    metadata.releaseTimestamp = value.toString()
-                                } else if (fieldName == 'requiredCore') {
-                                    metadata.requiredCoreVersion = value.toString()
-                                }
-                            }
-                        } catch (Exception e) {
-                            // Skip this field
-                        }
-                    }
-                } catch (Exception e) {
-                    // Can't introspect
-                }
-            }
-            
-            // Manifest info
+            // Manifest data - very safe
             try {
-                if (plugin.manifest != null) {
+                if (plugin.manifest != null && plugin.manifest.mainAttributes != null) {
                     def attrs = plugin.manifest.mainAttributes
                     metadata.buildDate = attrs.getValue('Build-Date')
                     metadata.builtBy = attrs.getValue('Built-By')
                     metadata.jenkinsVersion = attrs.getValue('Jenkins-Version')
                     metadata.pluginVersion = attrs.getValue('Plugin-Version')
+                    metadata.extensionName = attrs.getValue('Extension-Name')
+                    metadata.implementationTitle = attrs.getValue('Implementation-Title')
+                    metadata.implementationVersion = attrs.getValue('Implementation-Version')
+                    metadata.longName_manifest = attrs.getValue('Long-Name')
+                    metadata.pluginDevelopers = attrs.getValue('Plugin-Developers')
+                    metadata.supportDynamicLoading = attrs.getValue('Support-Dynamic-Loading')
+                    metadata.url_manifest = attrs.getValue('Url')
                 }
             } catch (Exception e) {
-                // No manifest data
+                echo "  ⚠️ Could not read manifest for ${plugin.shortName}"
             }
             
+            // UpdateCenter data - extract carefully
+            try {
+                def pluginInfo = updateCenter.getPlugin(plugin.shortName)
+                if (pluginInfo != null) {
+                    // URLs
+                    try { metadata.scm = pluginInfo.scm } catch (Exception e) {}
+                    try { metadata.wiki = pluginInfo.wiki } catch (Exception e) {}
+                    try { metadata.issueTrackerUrl = pluginInfo.issueTrackerUrl } catch (Exception e) {}
+                    
+                    // Text fields
+                    try { metadata.excerpt = pluginInfo.excerpt } catch (Exception e) {}
+                    try { metadata.releaseTimestamp = pluginInfo.releaseTimestamp?.toString() } catch (Exception e) {}
+                    try { metadata.requiredCore = pluginInfo.requiredCore } catch (Exception e) {}
+                    
+                    // Developers - careful extraction
+                    try {
+                        def devs = pluginInfo.getDevelopers()
+                        if (devs != null && devs.size() > 0) {
+                            metadata.developers = devs.collect { dev ->
+                                [
+                                    name: dev.name ?: 'Unknown',
+                                    email: dev.email ?: null,
+                                    id: dev.developerId ?: null
+                                ]
+                            }
+                            metadata.developerNames = metadata.developers.collect { it.name }.join(', ')
+                        }
+                    } catch (Exception e) {
+                        metadata.developers = []
+                        metadata.developerNames = 'Unknown'
+                    }
+                    
+                    // Categories/Labels
+                    try {
+                        def lbls = pluginInfo.getCategories()
+                        if (lbls != null && lbls.size() > 0) {
+                            metadata.categories = lbls.collect { it.toString() }
+                            metadata.categoryNames = metadata.categories.join(', ')
+                        }
+                    } catch (Exception e) {
+                        metadata.categories = []
+                        metadata.categoryNames = ''
+                    }
+                }
+            } catch (Exception e) {
+                echo "  ⚠️ Could not get UpdateCenter info for ${plugin.shortName}"
+            }
+            
+            // Set defaults for missing fields
+            if (!metadata.developers) metadata.developers = []
+            if (!metadata.developerNames) metadata.developerNames = 'Unknown'
+            if (!metadata.categories) metadata.categories = []
+            if (!metadata.categoryNames) metadata.categoryNames = ''
+            
             return metadata
+            
         } catch (Exception e) {
-            echo "⚠️ Error getting metadata for ${plugin.shortName}: ${e.message}"
+            echo "⚠️ Error processing ${plugin.shortName}: ${e.message}"
             return [
                 shortName: plugin.shortName,
                 longName: plugin.longName ?: plugin.shortName,
@@ -113,10 +134,13 @@ def getPluginData() {
                 enabled: false,
                 active: false,
                 hasUpdate: false,
-                dependencies: []
+                dependencies: [],
+                dependencyCount: 0,
+                developerNames: 'Unknown',
+                categoryNames: ''
             ]
         }
-    }
+    }.findAll { it != null }
 }
 
 def fetchSecurityWarnings() {
