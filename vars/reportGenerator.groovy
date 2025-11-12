@@ -22,6 +22,11 @@ def generateReports() {
     def vulnColorClass = vulnCount > 0 ? 'color-danger' : 'color-success'
     def riskColorClass = riskScore < 30 ? 'color-success' : (riskScore < 70 ? 'color-warning' : 'color-danger')
     
+    // Get Jenkins URL and build info for issue links
+    def jenkinsUrl = env.JENKINS_URL ?: 'http://localhost:8080/'
+    def buildUrl = env.BUILD_URL ?: "${jenkinsUrl}job/${env.JOB_NAME}/${env.BUILD_NUMBER}/"
+    def issueUrl = "${jenkinsUrl}job/${env.JOB_NAME}/issues" // Adjust if you track issues elsewhere
+    
     def html = new StringBuilder()
     html << """<!DOCTYPE html>
 <html lang="en">
@@ -101,6 +106,19 @@ def generateReports() {
             border-bottom: 3px solid var(--primary);
         }
         
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .section-header h2 {
+            margin-bottom: 0;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        
         .summary-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -143,12 +161,22 @@ def generateReports() {
             border-radius: 8px;
             font-weight: 600;
             font-size: 14px;
-            margin-top: 16px;
             transition: background 0.2s;
         }
         
         .issue-link:hover {
             background: var(--primary-dark);
+        }
+        
+        .issue-link-small {
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+        
+        .links-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
         }
         
         table { 
@@ -264,16 +292,10 @@ def generateReports() {
                     <div class="summary-value ${riskColorClass}">${riskScore < 30 ? 'Low' : (riskScore < 70 ? 'Medium' : 'High')}</div>
                 </div>
             </div>
-"""
-    
-    // Link to GitHub issue if BUILD_URL is available
-    if (env.BUILD_URL) {
-        html << """
-            <a href="${env.BUILD_URL}" class="issue-link">📋 View Full Build Details</a>
-"""
-    }
-    
-    html << """
+            <div class="links-group">
+                <a href="${buildUrl}" class="issue-link">📋 View Build Details</a>
+                <a href="${buildUrl}console" class="issue-link">📄 View Console Output</a>
+            </div>
         </div>
 """
 
@@ -281,7 +303,10 @@ def generateReports() {
     if (vulns.size() > 0) {
         html << """
         <div class="section">
-            <h2>🚨 Security Vulnerabilities (${vulnCount} found)</h2>
+            <div class="section-header">
+                <h2>🚨 Security Vulnerabilities (${vulnCount} found)</h2>
+                <a href="${buildUrl}artifact/plugins.json" class="issue-link issue-link-small">📥 Download JSON</a>
+            </div>
             <table>
                 <thead>
                     <tr>
@@ -407,7 +432,7 @@ def generateReports() {
 """
 
     writeFile file: 'plugin-validation-report.html', text: html.toString()
-    archiveArtifacts artifacts: '*.html,plugins.json'
+    archiveArtifacts artifacts: 'plugin-validation-report.html,plugins.json'
     
     try {
         publishHTML([
@@ -419,10 +444,10 @@ def generateReports() {
             reportName: 'Plugin Validation Report'
         ])
     } catch (Exception e) {
-        echo "⚠️ HTML Publisher not available"
+        echo "⚠️ HTML Publisher not available: ${e.message}"
     }
     
-    echo "✅ Reports generated successfully!"
+    echo "✅ Report generated: ${pluginCount} plugins, ${vulnCount} vulnerabilities, ${outdatedCount} outdated"
 }
 
 @NonCPS
