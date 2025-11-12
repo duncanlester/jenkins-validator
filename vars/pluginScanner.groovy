@@ -1,281 +1,153 @@
 #!/usr/bin/env groovy
 
 def fetchInstalledPlugins() {
-    echo "📦 Fetching installed Jenkins plugins with ALL safe metadata..."
-    
+    echo "📦 Fetching ALL plugin metadata..."
     def pluginData = getPluginData()
-    
     env.PLUGIN_DATA = groovy.json.JsonOutput.toJson(pluginData)
-    
     writeFile file: 'plugins.json', text: env.PLUGIN_DATA
     archiveArtifacts artifacts: 'plugins.json'
-    
-    echo "✅ Found ${pluginData.size()} plugins with complete metadata"
+    echo "✅ Found ${pluginData.size()} plugins"
 }
 
 @NonCPS
 def getPluginData() {
     def jenkins = Jenkins.instance
-    def pluginManager = jenkins.pluginManager
+    def plugins = jenkins.pluginManager.plugins
     def updateCenter = jenkins.updateCenter
-    def plugins = pluginManager.plugins
     
-    echo "📊 Processing ${plugins.size()} plugins with full metadata extraction..."
-    
-    return plugins.collect { plugin ->
+    return plugins.collect { p ->
+        def m = [
+            shortName: p.shortName,
+            longName: p.longName,
+            version: p.version.toString(),
+            enabled: p.enabled,
+            active: p.active,
+            hasUpdate: p.hasUpdate(),
+            url: p.url
+        ]
+        
+        try { m.bundled = p.isBundled() } catch (e) { m.bundled = false }
+        try { m.pinned = p.isPinned() } catch (e) { m.pinned = false }
+        
+        m.dependencies = p.dependencies.collect { d -> [shortName: d.shortName, version: d.version.toString(), optional: d.optional] }
+        m.dependencyCount = m.dependencies.size()
+        
+        // Manifest
         try {
-            def metadata = [:]
-            
-            // Basic plugin wrapper data - always safe
-            metadata.shortName = plugin.shortName
-            metadata.longName = plugin.longName
-            metadata.version = plugin.version.toString()
-            metadata.enabled = plugin.enabled
-            metadata.active = plugin.active
-            metadata.hasUpdate = plugin.hasUpdate()
-            metadata.url = plugin.url
-            
-            // Try to get bundled/pinned status safely
-            try { metadata.bundled = plugin.isBundled() } catch (Exception e) { metadata.bundled = false }
-            try { metadata.pinned = plugin.isPinned() } catch (Exception e) { metadata.pinned = false }
-            
-            // Dependencies
-            metadata.dependencies = plugin.dependencies.collect { dep ->
-                [
-                    shortName: dep.shortName,
-                    version: dep.version.toString(),
-                    optional: dep.optional
-                ]
+            def a = p.manifest?.mainAttributes
+            if (a) {
+                m.buildDate = a.getValue('Build-Date')
+                m.builtBy = a.getValue('Built-By')
+                m.jenkinsVersion = a.getValue('Jenkins-Version')
+                m.pluginDevelopers = a.getValue('Plugin-Developers')
             }
-            metadata.dependencyCount = metadata.dependencies.size()
-            
-            // Manifest data - very safe
-            try {
-                if (plugin.manifest != null && plugin.manifest.mainAttributes != null) {
-                    def attrs = plugin.manifest.mainAttributes
-                    metadata.buildDate = attrs.getValue('Build-Date')
-                    metadata.builtBy = attrs.getValue('Built-By')
-                    metadata.jenkinsVersion = attrs.getValue('Jenkins-Version')
-                    metadata.pluginVersion = attrs.getValue('Plugin-Version')
-                    metadata.extensionName = attrs.getValue('Extension-Name')
-                    metadata.implementationTitle = attrs.getValue('Implementation-Title')
-                    metadata.implementationVersion = attrs.getValue('Implementation-Version')
-                    metadata.longName_manifest = attrs.getValue('Long-Name')
-                    metadata.pluginDevelopers = attrs.getValue('Plugin-Developers')
-                    metadata.supportDynamicLoading = attrs.getValue('Support-Dynamic-Loading')
-                    metadata.url_manifest = attrs.getValue('Url')
-                }
-            } catch (Exception e) {
-                echo "  ⚠️ Could not read manifest for ${plugin.shortName}"
-            }
-            
-            // UpdateCenter data - extract carefully
-            try {
-                def pluginInfo = updateCenter.getPlugin(plugin.shortName)
-                if (pluginInfo != null) {
-                    // URLs
-                    try { metadata.scm = pluginInfo.scm } catch (Exception e) {}
-                    try { metadata.wiki = pluginInfo.wiki } catch (Exception e) {}
-                    try { metadata.issueTrackerUrl = pluginInfo.issueTrackerUrl } catch (Exception e) {}
-                    
-                    // Text fields
-                    try { metadata.excerpt = pluginInfo.excerpt } catch (Exception e) {}
-                    try { metadata.releaseTimestamp = pluginInfo.releaseTimestamp?.toString() } catch (Exception e) {}
-                    try { metadata.requiredCore = pluginInfo.requiredCore } catch (Exception e) {}
-                    
-                    // Developers - careful extraction
-                    try {
-                        def devs = pluginInfo.getDevelopers()
-                        if (devs != null && devs.size() > 0) {
-                            metadata.developers = devs.collect { dev ->
-                                [
-                                    name: dev.name ?: 'Unknown',
-                                    email: dev.email ?: null,
-                                    id: dev.developerId ?: null
-                                ]
-                            }
-                            metadata.developerNames = metadata.developers.collect { it.name }.join(', ')
-                        }
-                    } catch (Exception e) {
-                        metadata.developers = []
-                        metadata.developerNames = 'Unknown'
+        } catch (e) {}
+        
+        // UpdateCenter
+        try {
+            def pi = updateCenter.getPlugin(p.shortName)
+            if (pi) {
+                try { m.scm = pi.scm } catch (e) {}
+                try { m.wiki = pi.wiki } catch (e) {}
+                try { m.issueTrackerUrl = pi.issueTrackerUrl } catch (e) {}
+                try { m.excerpt = pi.excerpt } catch (e) {}
+                try { m.requiredCore = pi.requiredCore } catch (e) {}
+                
+                try {
+                    def devs = pi.getDevelopers()
+                    if (devs) {
+                        m.developers = devs.collect { [name: it.name ?: 'Unknown', email: it.email, id: it.developerId] }
+                        m.developerNames = m.developers.collect { it.name }.join(', ')
                     }
-                    
-                    // Categories/Labels
-                    try {
-                        def lbls = pluginInfo.getCategories()
-                        if (lbls != null && lbls.size() > 0) {
-                            metadata.categories = lbls.collect { it.toString() }
-                            metadata.categoryNames = metadata.categories.join(', ')
-                        }
-                    } catch (Exception e) {
-                        metadata.categories = []
-                        metadata.categoryNames = ''
+                } catch (e) {}
+                
+                try {
+                    def cats = pi.getCategories()
+                    if (cats) {
+                        m.categories = cats.collect { it.toString() }
+                        m.categoryNames = m.categories.join(', ')
                     }
-                }
-            } catch (Exception e) {
-                echo "  ⚠️ Could not get UpdateCenter info for ${plugin.shortName}"
+                } catch (e) {}
             }
-            
-            // Set defaults for missing fields
-            if (!metadata.developers) metadata.developers = []
-            if (!metadata.developerNames) metadata.developerNames = 'Unknown'
-            if (!metadata.categories) metadata.categories = []
-            if (!metadata.categoryNames) metadata.categoryNames = ''
-            
-            return metadata
-            
-        } catch (Exception e) {
-            echo "⚠️ Error processing ${plugin.shortName}: ${e.message}"
-            return [
-                shortName: plugin.shortName,
-                longName: plugin.longName ?: plugin.shortName,
-                version: plugin.version.toString(),
-                enabled: false,
-                active: false,
-                hasUpdate: false,
-                dependencies: [],
-                dependencyCount: 0,
-                developerNames: 'Unknown',
-                categoryNames: ''
-            ]
-        }
-    }.findAll { it != null }
+        } catch (e) {}
+        
+        if (!m.developerNames) m.developerNames = 'Unknown'
+        if (!m.categoryNames) m.categoryNames = ''
+        
+        return m
+    }
 }
 
 def fetchSecurityWarnings() {
-    echo "🔍 Fetching security warnings from Jenkins..."
-    
+    echo "🔍 Fetching security warnings..."
     def allWarnings = getSecurityWarnings()
-    
     env.SECURITY_WARNINGS = groovy.json.JsonOutput.toJson(allWarnings)
-    echo "⚠️ Found ${allWarnings.size()} security warnings"
+    echo "⚠️ Found ${allWarnings.size()} warnings"
 }
 
 @NonCPS
 def getSecurityWarnings() {
     def jenkins = Jenkins.instance
-    def pluginManager = jenkins.pluginManager
+    def plugins = jenkins.pluginManager.plugins
     def updateCenter = jenkins.updateCenter
-    def allWarnings = []
+    def warnings = []
     
-    echo "🔍 Checking each installed plugin for security warnings..."
-    
-    pluginManager.plugins.each { plugin ->
+    plugins.each { p ->
         try {
-            def pluginEntry = updateCenter.getPlugin(plugin.shortName)
-            
-            if (pluginEntry != null && pluginEntry.hasWarnings()) {
-                echo "⚠️ ${plugin.shortName} ${plugin.version} HAS WARNINGS"
-                
-                def warnings = pluginEntry.getWarnings()
-                
-                if (warnings != null && !warnings.isEmpty()) {
-                    warnings.each { warning ->
-                        echo "   ID: ${warning.id} - ${warning.message?.take(50)}"
-                        
-                        allWarnings.add([
-                            type: warning.type?.toString() ?: 'PLUGIN',
-                            id: warning.id?.toString() ?: 'UNKNOWN',
-                            name: plugin.shortName,
-                            message: warning.message?.toString() ?: 'Security vulnerability',
-                            url: warning.url?.toString() ?: '',
-                            active: true,
-                            versions: []
-                        ])
-                    }
+            def pi = updateCenter.getPlugin(p.shortName)
+            if (pi && pi.hasWarnings()) {
+                pi.getWarnings().each { w ->
+                    warnings.add([
+                        type: w.type?.toString() ?: 'PLUGIN',
+                        id: w.id?.toString() ?: 'UNKNOWN',
+                        name: p.shortName,
+                        message: w.message?.toString() ?: 'Security vulnerability',
+                        url: w.url?.toString() ?: ''
+                    ])
                 }
             }
-        } catch (Exception e) {
-            // Skip plugins that can't be checked
-        }
+        } catch (e) {}
     }
-    
-    echo "📊 Collected ${allWarnings.size()} warnings"
-    
-    return allWarnings
+    return warnings
 }
 
 def checkForUpdates() {
     def pluginData = readJSON text: env.PLUGIN_DATA
-    def outdatedPlugins = findOutdatedPlugins(pluginData)
-    
-    echo "📊 ${outdatedPlugins.size()} plugins have updates available"
-    
-    env.OUTDATED_COUNT = outdatedPlugins.size().toString()
-    env.OUTDATED_PLUGINS = groovy.json.JsonOutput.toJson(outdatedPlugins)
-}
-
-@NonCPS
-def findOutdatedPlugins(pluginData) {
-    return pluginData.findAll { it.hasUpdate }
+    def outdated = pluginData.findAll { it.hasUpdate }
+    env.OUTDATED_COUNT = outdated.size().toString()
+    env.OUTDATED_PLUGINS = groovy.json.JsonOutput.toJson(outdated)
 }
 
 def scanVulnerabilities() {
-    echo "🔍 Scanning for vulnerabilities..."
+    def plugins = readJSON text: env.PLUGIN_DATA
+    def warnings = readJSON text: env.SECURITY_WARNINGS
+    def vulns = []
     
-    def pluginData = readJSON text: env.PLUGIN_DATA
-    def securityWarnings = readJSON text: env.SECURITY_WARNINGS
-    def vulnerabilities = []
-    
-    echo "📋 Checking ${pluginData.size()} plugins against ${securityWarnings.size()} security warnings"
-    
-    pluginData.each { plugin ->
-        def matchingWarnings = securityWarnings.findAll { w -> w.name == plugin.shortName }
-        
-        if (matchingWarnings.size() > 0) {
-            echo "⚠️ Found ${matchingWarnings.size()} warning(s) for ${plugin.shortName} ${plugin.version}"
-            
-            matchingWarnings.each { warning ->
-                def cveMatch = (warning.id =~ /CVE-\d{4}-\d+/)
-                def cve = cveMatch ? cveMatch[0] : warning.id
-                
-                def severity = determineSeverity(warning.message)
-                def cvssScore = getCvssScore(severity)
-                
-                vulnerabilities << [
-                    plugin: plugin.shortName,
-                    version: plugin.version.toString(),
-                    cve: cve,
-                    severity: severity,
-                    cvss: cvssScore,
-                    description: warning.message,
-                    url: warning.url,
-                    installed: plugin.version.toString()
-                ]
-                
-                echo "   ❌ ${cve} (${severity})"
-            }
+    plugins.each { p ->
+        warnings.findAll { w -> w.name == p.shortName }.each { w ->
+            def cve = (w.id =~ /CVE-\d{4}-\d+/) ? (w.id =~ /CVE-\d{4}-\d+/)[0] : w.id
+            def sev = determineSeverity(w.message)
+            vulns << [plugin: p.shortName, version: p.version, cve: cve, severity: sev, cvss: getCvssScore(sev), description: w.message, url: w.url, installed: p.version]
         }
     }
     
-    vulnerabilities = vulnerabilities.unique { [it.plugin, it.cve] }
+    vulns = vulns.unique { [it.plugin, it.cve] }
+    env.VULNERABILITIES = groovy.json.JsonOutput.toJson(vulns)
+    env.VULN_COUNT = vulns.size().toString()
     
-    env.VULNERABILITIES = groovy.json.JsonOutput.toJson(vulnerabilities)
-    env.VULN_COUNT = vulnerabilities.size().toString()
-    
-    if (vulnerabilities.size() > 0) {
+    if (vulns.size() > 0) {
         currentBuild.result = 'UNSTABLE'
-        echo "⚠️ Found ${vulnerabilities.size()} vulnerable plugins!"
-        
-        vulnerabilities.each { vuln ->
-            echo "  ❌ ${vuln.plugin} ${vuln.version}: ${vuln.cve} (${vuln.severity})"
-        }
-    } else {
-        echo "✅ No vulnerabilities detected"
+        echo "⚠️ Found ${vulns.size()} vulnerabilities"
     }
 }
 
 @NonCPS
-def determineSeverity(String message) {
-    if (!message) return 'MEDIUM'
-    
-    def lowerMsg = message.toLowerCase()
-    
-    if (lowerMsg.contains('critical')) return 'CRITICAL'
-    if (lowerMsg.contains('high')) return 'HIGH'
-    if (lowerMsg.contains('low')) return 'LOW'
-    
+def determineSeverity(String msg) {
+    if (!msg) return 'MEDIUM'
+    def m = msg.toLowerCase()
+    if (m.contains('critical')) return 'CRITICAL'
+    if (m.contains('high')) return 'HIGH'
+    if (m.contains('low')) return 'LOW'
     return 'MEDIUM'
 }
 
