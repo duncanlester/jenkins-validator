@@ -179,15 +179,15 @@ def generateReports() {
         
         table { 
             width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
+            border-collapse: collapse;
             font-size: 13px;
-            border: 1px solid var(--border);
+            border: 2px solid var(--border);
             border-radius: 8px;
-            overflow: hidden;
         }
         
-        thead { background: linear-gradient(180deg, #f8f9fc 0%, #f1f3f9 100%); }
+        thead { 
+            background: linear-gradient(180deg, #f8f9fc 0%, #f1f3f9 100%);
+        }
         
         th { 
             padding: 16px 14px;
