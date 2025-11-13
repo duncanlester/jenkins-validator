@@ -59,6 +59,7 @@ def buildSBOM(plugins, vulns, timestamp, jenkinsVersion) {
         component.name = p.shortName
         component.version = p.version
         component.description = p.longName
+        component."bom-ref" = "pkg:jenkins/plugin/${p.shortName}@${p.version}"
         component.purl = "pkg:jenkins/plugin/${p.shortName}@${p.version}"
         component.properties = []
 
