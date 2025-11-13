@@ -65,55 +65,67 @@ pipeline {
                     withCredentials([string(credentialsId: 'dependency-track-api-key', variable: 'DEPENDENCY_TRACK_API_KEY')]) {
                         def dtUrl = 'http://localhost:8081'
 
-                        if (fileExists('sbom.json')) {
-                            echo "📤 Uploading SBOM to Dependency-Track..."
+                        try {
+                            if (fileExists('sbom.json')) {
+                                echo "📤 Uploading SBOM to Dependency-Track..."
 
-                            def sbomContent = readFile('sbom.json')
-                            def sbomBase64 = sbomContent.bytes.encodeBase64().toString()
+                                // Read and encode SBOM
+                                def sbomContent = readFile('sbom.json')
+                                def sbomBase64 = sbomContent.bytes.encodeBase64().toString()
 
-                            def payload = groovy.json.JsonOutput.toJson([
-                                projectName: 'Jenkins-Plugins',
-                                projectVersion: env.BUILD_NUMBER,
-                                autoCreate: true,
-                                bom: sbomBase64
-                            ])
+                                echo "SBOM size: ${sbomContent.length()} bytes"
 
-                            writeFile file: 'dt-payload.json', text: payload
+                                // Create payload
+                                def payload = groovy.json.JsonOutput.toJson([
+                                    projectName: 'Jenkins-Plugins',
+                                    projectVersion: env.BUILD_NUMBER ?: '1.0.0',
+                                    autoCreate: true,
+                                    bom: sbomBase64
+                                ])
 
-                            // Use a temporary file for the API key to avoid exposure in logs
-                            writeFile file: '.dt-api-key', text: env.DEPENDENCY_TRACK_API_KEY
+                                writeFile file: 'dt-payload.json', text: payload
+                                writeFile file: '.dt-api-key', text: env.DEPENDENCY_TRACK_API_KEY
 
-                            def response = sh(
-                                script: '''
-                                    curl -X PUT "${DT_URL}/api/v1/bom" \
-                                    -H "Content-Type: application/json" \
-                                    -H "X-Api-Key: $(cat .dt-api-key)" \
-                                    --data @dt-payload.json \
-                                    -w "%{http_code}" \
-                                    -o dt-response.json \
-                                    -s
-                                ''',
-                                returnStdout: true,
-                                env: ["DT_URL=${dtUrl}"]
-                            ).trim()
+                                echo "Uploading to: ${dtUrl}/api/v1/bom"
 
-                            echo "HTTP Status: ${response}"
+                                // Upload using curl (removed env parameter)
+                                def response = sh(
+                                    script: '''#!/bin/bash
+                                        set +x
+                                        curl -X PUT "http://localhost:8081/api/v1/bom" \
+                                        -H "Content-Type: application/json" \
+                                        -H "X-Api-Key: $(cat .dt-api-key)" \
+                                        --data @dt-payload.json \
+                                        -w "%{http_code}" \
+                                        -o dt-response.json \
+                                        -s
+                                    ''',
+                                    returnStdout: true
+                                ).trim()
 
-                            if (response == '200' || response == '201') {
-                                echo "✅ SBOM uploaded successfully to Dependency-Track"
-                                echo "   View at: ${dtUrl}/projects"
-                            } else {
-                                echo "⚠️  Upload failed with status ${response}"
-                                if (fileExists('dt-response.json')) {
-                                    def responseContent = readFile('dt-response.json')
-                                    echo "Response: ${responseContent}"
+                                echo "HTTP Status: ${response}"
+
+                                if (response == '200' || response == '201') {
+                                    echo "✅ SBOM uploaded successfully to Dependency-Track"
+                                    echo "   View at: http://localhost:8082/projects"
+                                } else {
+                                    echo "⚠️  Upload returned status ${response}"
+                                    if (fileExists('dt-response.json')) {
+                                        def responseContent = readFile('dt-response.json')
+                                        echo "Response: ${responseContent}"
+                                    }
                                 }
+
+                            } else {
+                                echo "⚠️  sbom.json not found in workspace"
                             }
 
-                            // Clean up sensitive files
-                            sh 'rm -f dt-payload.json dt-response.json .dt-api-key'
-                        } else {
-                            echo "⚠️  sbom.json not found - skipping upload"
+                        } catch (Exception e) {
+                            echo "❌ Error uploading to Dependency-Track: ${e.message}"
+                            currentBuild.result = 'UNSTABLE'
+
+                        } finally {
+                            sh 'rm -f dt-payload.json dt-response.json .dt-api-key || true'
                         }
                     }
                 }
