@@ -64,7 +64,6 @@ pipeline {
                 script {
                     withCredentials([string(credentialsId: 'dependency-track-api-key', variable: 'DEPENDENCY_TRACK_API_KEY')]) {
                         def dtUrl = 'http://localhost:8081'
-                        def apiKey = env.DEPENDENCY_TRACK_API_KEY
 
                         if (fileExists('sbom.json')) {
                             echo "📤 Uploading SBOM to Dependency-Track..."
@@ -81,17 +80,21 @@ pipeline {
 
                             writeFile file: 'dt-payload.json', text: payload
 
+                            // Use a temporary file for the API key to avoid exposure in logs
+                            writeFile file: '.dt-api-key', text: env.DEPENDENCY_TRACK_API_KEY
+
                             def response = sh(
-                                script: """
-                                    curl -X PUT '${dtUrl}/api/v1/bom' \\
-                                    -H 'Content-Type: application/json' \\
-                                    -H 'X-Api-Key: ${apiKey}' \\
-                                    --data @dt-payload.json \\
-                                    -w '%{http_code}' \\
-                                    -o dt-response.json \\
+                                script: '''
+                                    curl -X PUT "${DT_URL}/api/v1/bom" \
+                                    -H "Content-Type: application/json" \
+                                    -H "X-Api-Key: $(cat .dt-api-key)" \
+                                    --data @dt-payload.json \
+                                    -w "%{http_code}" \
+                                    -o dt-response.json \
                                     -s
-                                """,
-                                returnStdout: true
+                                ''',
+                                returnStdout: true,
+                                env: ["DT_URL=${dtUrl}"]
                             ).trim()
 
                             echo "HTTP Status: ${response}"
@@ -101,11 +104,14 @@ pipeline {
                                 echo "   View at: ${dtUrl}/projects"
                             } else {
                                 echo "⚠️  Upload failed with status ${response}"
-                                def responseContent = readFile('dt-response.json')
-                                echo "Response: ${responseContent}"
+                                if (fileExists('dt-response.json')) {
+                                    def responseContent = readFile('dt-response.json')
+                                    echo "Response: ${responseContent}"
+                                }
                             }
 
-                            sh 'rm -f dt-payload.json dt-response.json'
+                            // Clean up sensitive files
+                            sh 'rm -f dt-payload.json dt-response.json .dt-api-key'
                         } else {
                             echo "⚠️  sbom.json not found - skipping upload"
                         }
