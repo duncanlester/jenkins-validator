@@ -1,0 +1,95 @@
+// jenkins-nodejs
+// Example pipeline that uses the split, Node-specific shared-library steps.
+// Library name: validation-library (ensure Jenkins Global Pipeline Library is configured with that name)
+@Library('validation-library') _
+pipeline {
+  agent any
+
+  environment {
+    DT_API_URL = "${DT_API_URL ?: 'http://dtrack-apiserver:8080'}"
+    DT_API_KEY_CRED = "${DT_API_KEY_CRED ?: 'dependency-track-api-key'}"
+    PROJECT_NAME = "${PROJECT_NAME ?: env.JOB_NAME ?: 'My-Node-App'}"
+    PROJECT_VERSION = "${PROJECT_VERSION ?: env.BUILD_NUMBER ?: '1.0.0'}"
+    SBOM_FILE = 'sbom.json'
+    VULN_JSON = 'dt-vulnerabilities.json'
+    REPORT_FILE = 'vulnerability-report.html'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Install deps (optional)') {
+      steps {
+        sh 'npm ci'
+      }
+    }
+
+    stage('Generate SBOM') {
+      steps {
+        script {
+          def sbom = node_generateSbom(sbomFile: env.SBOM_FILE, installIfMissing: false)
+          echo "SBOM: ${sbom}"
+        }
+      }
+    }
+
+    stage('Upload SBOM') {
+      steps {
+        script {
+          def uuid = node_uploadSbom(
+            dtApiUrl: env.DT_API_URL,
+            dtApiKeyCredentialId: env.DT_API_KEY_CRED,
+            projectName: env.PROJECT_NAME,
+            projectVersion: env.PROJECT_VERSION,
+            sbomFile: env.SBOM_FILE
+          )
+          echo "Project UUID: ${uuid}"
+          writeFile file: 'project-uuid.txt', text: uuid
+        }
+      }
+    }
+
+    stage('Fetch Vulnerabilities') {
+      steps {
+        script {
+          def uuid = readFile('project-uuid.txt').trim()
+          def vulnFile = node_fetchVulnerabilities(
+            dtApiUrl: env.DT_API_URL,
+            dtApiKeyCredentialId: env.DT_API_KEY_CRED,
+            projectUuid: uuid,
+            vulnJsonFile: env.VULN_JSON,
+            pollAttempts: 36,
+            pollIntervalSeconds: 5
+          )
+          echo "Vulnerabilities wrote to: ${vulnFile}"
+        }
+      }
+    }
+
+    stage('Render Report') {
+      steps {
+        script {
+          def report = node_renderNodeReport(
+            vulnJsonFile: env.VULN_JSON,
+            reportFile: env.REPORT_FILE,
+            sbomFile: env.SBOM_FILE,
+            projectName: env.PROJECT_NAME,
+            projectVersion: env.PROJECT_VERSION,
+            publish: true
+          )
+          echo "Report generated: ${report}"
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'sbom.json, dt-vulnerabilities.json, vulnerability-report.html', allowEmptyArchive: true
+    }
+  }
+}
