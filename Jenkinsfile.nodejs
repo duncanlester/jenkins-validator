@@ -10,6 +10,10 @@ pipeline {
     SBOM_FILE = 'sbom.json'
     VULN_JSON = 'dt-vulnerabilities.json'
     REPORT_FILE = 'vulnerability-report.html'
+
+    // Artifactory / npm settings - change or set in job config:
+    ART_REGISTRY = "${ART_REGISTRY ?: 'https://artifactory.example.com/artifactory/api/npm/npm-repo/'}"
+    NPM_TOKEN_CREDENTIAL_ID = "${NPM_TOKEN_CREDENTIAL_ID ?: 'artifactory-npm-token'}"
   }
 
   stages {
@@ -19,9 +23,30 @@ pipeline {
       }
     }
 
+    stage('Prepare .npmrc (Artifactory)') {
+      steps {
+        // inject npm token from Jenkins Secret Text
+        withCredentials([string(credentialsId: env.NPM_TOKEN_CREDENTIAL_ID, variable: 'NPM_TOKEN')]) {
+          sh '''
+            chmod +x ./scripts/create-npmrc.sh
+            ART_REGISTRY="${ART_REGISTRY}" NPM_TOKEN="${NPM_TOKEN}" ./scripts/create-npmrc.sh
+            echo "Created .npmrc pointing to ${ART_REGISTRY}"
+            sed -E 's/:_authToken=.*/:_authToken=REDACTED/' .npmrc || true
+          '''
+        }
+      }
+    }
+
     stage('Install deps (optional)') {
       steps {
-        sh 'npm ci'
+        // npm will use .npmrc in workspace
+        sh '''
+          if [ -f package-lock.json ]; then
+            npm ci --prefer-offline --no-audit --progress=false
+          else
+            npm install --prefer-offline --no-audit --progress=false
+          fi
+        '''
       }
     }
 
@@ -86,6 +111,8 @@ pipeline {
 
   post {
     always {
+      // clean up npm auth file so tokens aren't left on agents
+      sh 'rm -f .npmrc || true'
       archiveArtifacts artifacts: 'sbom.json, dt-vulnerabilities.json, vulnerability-report.html', allowEmptyArchive: true
     }
   }

@@ -2,62 +2,60 @@
 
 def call() {
     echo "📝 Generating validation reports..."
-    
+
     def pluginJson = readFile(file: 'plugins.json')
     def plugins = readJSON text: pluginJson
     def vulns = readJSON text: (env.VULNERABILITIES ?: '[]')
     def outdated = readJSON text: (env.OUTDATED_PLUGINS ?: '[]')
-    
+
     def pluginCount = plugins.size()
     echo "📊 Generating report for ${pluginCount} plugins"
-    
+
     def timestamp = new Date().format('yyyy-MM-dd HH:mm:ss', TimeZone.getTimeZone('UTC'))
     def jenkinsVersion = Jenkins.instance.version.toString()
     def currentUser = getCurrentUser()
-    
+
     def vulnCount = vulns.size()
     def outdatedCount = outdated.size()
     def riskScore = env.RISK_SCORE?.toInteger() ?: 0
-    
+
     def vulnColorClass = vulnCount > 0 ? 'color-danger' : 'color-success'
     def riskColorClass = riskScore < 30 ? 'color-success' : (riskScore < 70 ? 'color-warning' : 'color-danger')
-    
+
     def jenkinsUrl = env.JENKINS_URL ?: 'http://localhost:8080/'
     def buildUrl = env.BUILD_URL ?: "${jenkinsUrl}job/${env.JOB_NAME}/${env.BUILD_NUMBER}/"
-    
+
     def cssContent = libraryResource('report-style.css')
     writeFile file: 'report-style.css', text: cssContent
-    
-    def html = buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCount, 
-                                riskScore, vulnColorClass, riskColorClass, timestamp, 
+
+    def html = buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCount,
+                                riskScore, vulnColorClass, riskColorClass, timestamp,
                                 jenkinsVersion, currentUser, buildUrl)
-    
+
     writeFile file: 'plugin-validation-report.html', text: html
     archiveArtifacts artifacts: 'plugin-validation-report.html,report-style.css,plugins.json'
-    
+
     try {
         publishHTML([
             allowMissing: false,
             alwaysLinkToLastBuild: true,
             keepAll: true,
-            reportDir: '.',
+            // allowScripting was removed from newer htmlpublisher versions for security.
+            // Removing it avoids the "Unknown parameter(s) found" error.
+            reportDir: 'reports',                    // adjust to the directory where your HTML is written
             reportFiles: 'plugin-validation-report.html',
-            reportName: 'Plugin Validation Report',
-            reportTitles: 'Jenkins Plugin Validation Report',
-            allowScripting: false,
-            escapeUnderscores: true,
-            includes: '**/*'
+            reportName: 'Plugin Validation Report'
         ])
     } catch (Exception e) {
-        echo "⚠️ HTML Publisher not available: ${e.message}"
+        echo "Failed to publish HTML report: ${e.message}"
     }
-    
+
     echo "✅ Report generated: ${pluginCount} plugins, ${vulnCount} vulnerabilities, ${outdatedCount} outdated"
 }
 
 @NonCPS
-def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCount, 
-                    riskScore, vulnColorClass, riskColorClass, timestamp, 
+def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCount,
+                    riskScore, vulnColorClass, riskColorClass, timestamp,
                     jenkinsVersion, currentUser, buildUrl) {
     def html = new StringBuilder()
     html << '<!DOCTYPE html>\n'
@@ -125,18 +123,18 @@ def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCo
         html << '                    </tr>\n'
         html << '                </thead>\n'
         html << '                <tbody>\n'
-        
+
         vulns.each { v ->
             def cveUrl = escapeHtml(v.url ?: "https://www.jenkins.io/security/advisories/")
             def cveText = v.cve ?: ''
             def cveIds = cveText.split(',')
-            
+
             // Create clickable links for each CVE ID
             def cveLinks = cveIds.collect { cve ->
                 def trimmedCve = escapeHtml(cve.trim())
                 "<a href=\"${cveUrl}\" class=\"cve-link\">${trimmedCve}</a>"
             }.join(', ')
-            
+
             html << '                    <tr>\n'
             html << "                        <td><strong>${escapeHtml(v.plugin)}</strong></td>\n"
             html << "                        <td>${escapeHtml(v.version)}</td>\n"
@@ -146,7 +144,7 @@ def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCo
             html << "                        <td><a href=\"${cveUrl}\">View Details</a></td>\n"
             html << '                    </tr>\n'
         }
-        
+
         html << '                </tbody>\n'
         html << '            </table>\n'
         html << '        </div>\n'
@@ -176,7 +174,7 @@ def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCo
         html << '                    </tr>\n'
         html << '                </thead>\n'
         html << '                <tbody>\n'
-        
+
         outdated.each { p ->
             def devName = (p.developerNames ?: 'Unknown').toString().split(':')[0]
             html << '                    <tr>\n'
@@ -188,7 +186,7 @@ def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCo
             html << "                        <td class=\"td-center\">${p.dependencyCount ?: 0}</td>\n"
             html << '                    </tr>\n'
         }
-        
+
         html << '                </tbody>\n'
         html << '            </table>\n'
         html << '        </div>\n'
@@ -210,7 +208,7 @@ def buildReportHTML(plugins, vulns, outdated, pluginCount, vulnCount, outdatedCo
     html << '                    </tr>\n'
     html << '                </thead>\n'
     html << '                <tbody>\n'
-    
+
     plugins.each { p ->
         def devName = (p.developerNames ?: 'Unknown').toString().split(':')[0]
         def statusBadge = p.enabled ? 'enabled' : 'disabled'
