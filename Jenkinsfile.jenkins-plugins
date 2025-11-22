@@ -1,4 +1,4 @@
-@Library('plugin-validator') _
+@Library('validation-library') _
 
 pipeline {
     agent any
