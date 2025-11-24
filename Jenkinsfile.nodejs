@@ -12,7 +12,7 @@ pipeline {
     REPORT_FILE = 'vulnerability-report.html'
 
     // Artifactory / npm settings - change or set in job config:
-    ART_REGISTRY = "${ART_REGISTRY ?: 'https://artifactory.example.com/artifactory/api/npm/npm-repo/'}"
+    ARTIFACTORY_NPM_REGISTRY = "${ARTIFACTORY_NPM_REGISTRY ?: 'https://artifactory.example.com/artifactory/api/npm/npm-repo/'}"
     NPM_TOKEN_CREDENTIAL_ID = "${NPM_TOKEN_CREDENTIAL_ID ?: 'artifactory-npm-token'}"
   }
 
@@ -29,8 +29,8 @@ pipeline {
         withCredentials([string(credentialsId: env.NPM_TOKEN_CREDENTIAL_ID, variable: 'NPM_TOKEN')]) {
           sh '''
             chmod +x ./scripts/create-npmrc.sh
-            ART_REGISTRY="${ART_REGISTRY}" NPM_TOKEN="${NPM_TOKEN}" ./scripts/create-npmrc.sh
-            echo "Created .npmrc pointing to ${ART_REGISTRY}"
+            ARTIFACTORY_NPM_REGISTRY="${ARTIFACTORY_NPM_REGISTRY}" NPM_TOKEN="${NPM_TOKEN}" ./scripts/create-npmrc.sh
+            echo "Created .npmrc pointing to ${ARTIFACTORY_NPM_REGISTRY}"
             sed -E 's/:_authToken=.*/:_authToken=REDACTED/' .npmrc || true
           '''
         }
