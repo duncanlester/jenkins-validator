@@ -27,14 +27,14 @@ def call(Map config = [:]) {
         try {
             def curlOut = bashScript("""
                 #!/usr/bin/bash
-                set -o pipefail
                 curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
                     -H "Content-Type: application/json" -H "X-Api-Key: $DT_API_KEY" \
-                    --data @"${payloadFile}"
-                """, "upload_sbom.sh")
+                    --data @"${payloadFile}" || true
+            """, "upload_sbom.sh")
+            def httpCode = curlOut?.trim() ?: '000'
             def out = bashScript("""
-                    #!/usr/bin/bash
-                    curl -s -o /dev/null -w "%{http_code}" http://localhost:8080
+                #!/usr/bin/bash
+                curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 || true
                 """)
                 echo "HTTP CODE: ${out}"
         } catch (Exception e) {
