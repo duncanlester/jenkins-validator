@@ -15,7 +15,6 @@ pipeline {
     SBOM_FILE = 'sbom.json'
     VULN_JSON = 'dt-vulnerabilities.json'
     REPORT_FILE = 'vulnerability-report.html'
-    // Artifactory/NPM registry settings removed
   }
 
   stages {
@@ -98,7 +97,6 @@ pipeline {
 
   post {
     always {
-      // clean up npm auth file so tokens aren't left on agents
       sh 'rm -f .npmrc || true'
       archiveArtifacts artifacts: 'sbom.json, dt-vulnerabilities.json, vulnerability-report.html', allowEmptyArchive: true
     }
