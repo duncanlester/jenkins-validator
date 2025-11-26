@@ -1,4 +1,5 @@
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import java.net.URLEncoder
 
 def call(Map config = [:]) {
@@ -31,13 +32,8 @@ def call(Map config = [:]) {
                     -H "Content-Type: application/json" -H "X-Api-Key: \$DT_API_KEY" \\
                     --data @"${payloadFile}" || true
             """, "upload_sbom.sh")
-            httpCode = curlOut?.trim() ?: '000'  // No 'def' here!
+            httpCode = curlOut?.trim() ?: '000'
 
-            def out = bashScript("""
-                #!/usr/bin/bash
-                curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 || true
-            """)
-            echo "HTTP CODE: ${out}"
         } catch (Exception e) {
             echo "Error in SBOM upload: ${e.getMessage()}"
             httpCode = 'exception'
@@ -47,14 +43,20 @@ def call(Map config = [:]) {
             error "SBOM upload failed (HTTP ${httpCode})"
         }
 
-        // locate project UUID
+        // locate project UUID WITHOUT jq (use Groovy JsonSlurper)
         for (int i = 0; i < 10; i++) {
             try {
+                // Save project list response to file
                 def uuidScript = """
                 #!/usr/bin/bash
-                curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/project?name=${URLEncoder.encode(projectName, 'UTF-8')}" | jq -r '.[0].uuid // empty'
+                curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/project?name=${URLEncoder.encode(projectName, 'UTF-8')}" > project-response.json
                 """
-                projectUuid = bashScript(uuidScript, "get_project_uuid.sh").trim()
+                bashScript(uuidScript, "get_project_uuid.sh")
+
+                // Parse JSON for UUID using Groovy
+                def projectJson = readFile('project-response.json')
+                def projects = new JsonSlurper().parseText(projectJson)
+                projectUuid = (projects && projects.size() > 0) ? projects[0]?.uuid : ''
                 if (projectUuid) break
             } catch (Exception e) {
                 echo "Error during UUID lookup: ${e.getMessage()}"
