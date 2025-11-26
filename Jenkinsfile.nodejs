@@ -1,11 +1,11 @@
 @Library('validation-library') _
 pipeline {
-  // agent {
-  //   docker {
-  //     image 'node:12'
-  //     args '-u jenkins:jenkins' // optional: fixes UID issues for npm install
-  //   }
-  // }
+  agent {
+    docker {
+      image 'node:12'
+      args '-u root:root'
+    }
+  }
 
   environment {
     DT_API_URL = "${DT_API_URL ?: 'http://dtrack-apiserver:8080'}"
