@@ -33,6 +33,7 @@ def call(Map config = [:]) {
                     --data @"${payloadFile}"
                 """, "upload_sbom.sh")
             httpCode = curlOut?.trim() ?: '000'
+            echo 'this is httpCode:' + httpCode
         } catch (Exception e) {
             echo "Error in SBOM upload: ${e.getMessage()}"
             httpCode = 'exception'
