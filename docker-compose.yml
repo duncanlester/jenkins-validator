@@ -71,7 +71,7 @@ services:
       - dtrack-network
     volumes:
       - jenkins_home_data_1:/var/jenkins_home
-    #   - jenkins_plugins:/var/jenkins_home/plugins
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: always
     secrets:
       - admin_password
