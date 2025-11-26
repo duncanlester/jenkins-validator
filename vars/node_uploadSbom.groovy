@@ -32,7 +32,7 @@ def call(Map config = [:]) {
                 curl -s -X PUT "${dtApiUrl}/api/v1/bom" \\
                     -H "Content-Type: application/json" -H "X-Api-Key: \$DT_API_KEY" \\
                     --data @"${payloadFile}" > dt-upload-response.json || true
-            """, "upload_sbom.sh")
+                """, "upload_sbom.sh")
 
             // Parse upload response file to get token (indicates success)
             def responseJson = readFile('dt-upload-response.json')
@@ -54,7 +54,7 @@ def call(Map config = [:]) {
                 bashScript("""
                     #!/usr/bin/bash
                     curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/project?name=${URLEncoder.encode(projectName, 'UTF-8')}" > project-response.json
-                """, "get_project_uuid.sh")
+                    """, "get_project_uuid.sh")
                 def projectJson = readFile('project-response.json')
                 def projects = new JsonSlurper().parseText(projectJson)
                 projectUuid = (projects && projects.size() > 0) ? projects[0]?.uuid : ''
