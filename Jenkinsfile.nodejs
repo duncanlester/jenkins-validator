@@ -24,15 +24,21 @@ pipeline {
       }
     }
 
+sh(script: '''
+      set -o pipefail
+      echo "Running bash with pipefail in Node 18 container"
+      ls not_a_real_file | grep something || echo "Pipefail demo: should see this line"
+    ''', shell: '/bin/bash')
     stage('Install deps') {
       steps {
-        sh '''
+        sh(script '''
+          set -o pipefail
           if [ -f package-lock.json ]; then
             npm ci --prefer-offline --no-audit --progress=false
           else
             npm install --prefer-offline --no-audit --progress=false
           fi
-        '''
+        ''', shell: '/bin/bash')
       }
     }
 
@@ -51,7 +57,7 @@ pipeline {
           def uuid = node_uploadSbom(
             dtApiUrl: env.DT_API_URL,
             dtApiKeyCredentialId: env.DT_API_KEY_CRED,
-            projectName: env.PROJECT_NAME,
+            projectName:  env.PROJECT_NAME,
             projectVersion: env.PROJECT_VERSION,
             sbomFile: env.SBOM_FILE
           )
