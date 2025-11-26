@@ -2,7 +2,7 @@
 // Polls Dependency-Track for Node project vulnerabilities and writes them to a JSON file.
 // Returns the vulnerability JSON filepath.
 def call(Map config = [:]) {
-    String dtApiUrl = config.get('dtApiUrl') ?: env.DT_API_URL ?: 'http://dtrack-apiserver:8081'
+    String dtApiUrl = config.get('dtApiUrl') ?: env.DT_API_URL ?: 'http://localhost:8081'
     String dtApiKeyCredentialId = config.get('dtApiKeyCredentialId') ?: 'dependency-track-api-key'
     String projectUuid = config.get('projectUuid') ?: ''
     String vulnJsonFile = config.get('vulnJsonFile') ?: 'dt-vulnerabilities.json'
