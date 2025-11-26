@@ -39,7 +39,7 @@ pipeline {
     stage('Generate SBOM') {
       steps {
         script {
-          def sbom = generateNodeSbom(sbomFile: env.SBOM_FILE, installIfMissing: false)
+          def sbom = node_generateSbom(sbomFile: env.SBOM_FILE, installIfMissing: false)
           echo "SBOM: ${sbom}"
         }
       }
