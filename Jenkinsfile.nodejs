@@ -23,7 +23,7 @@ pipeline {
         git url: 'https://github.com/duncanlester/testcafe-api.git', credentialsId: 'duncanlester'
       }
     }
-    
+
     stage('Install deps') {
       steps {
         sh '''
@@ -39,7 +39,7 @@ pipeline {
     stage('Generate SBOM') {
       steps {
         script {
-          def sbom = node_generateSbom(sbomFile: env.SBOM_FILE, installIfMissing: false)
+          def sbom = generateSbom(sbomFile: env.SBOM_FILE, installIfMissing: false)
           echo "SBOM: ${sbom}"
         }
       }
@@ -48,7 +48,7 @@ pipeline {
     stage('Upload SBOM') {
       steps {
         script {
-          def uuid = node_uploadSbom(
+          def uuid = uploadSbom(
             dtApiUrl: env.DT_API_URL,
             dtApiKeyCredentialId: env.DT_API_KEY_CRED,
             projectName: env.PROJECT_NAME,
@@ -65,7 +65,7 @@ pipeline {
       steps {
         script {
           def uuid = readFile('project-uuid.txt').trim()
-          def vulnFile = node_fetchVulnerabilities(
+          def vulnFile = fetchVulnerabilities(
             dtApiUrl: env.DT_API_URL,
             dtApiKeyCredentialId: env.DT_API_KEY_CRED,
             projectUuid: uuid,
@@ -81,7 +81,7 @@ pipeline {
     stage('Render Report') {
       steps {
         script {
-          def report = node_renderNodeReport(
+          def report = renderNodeReport(
             vulnJsonFile: env.VULN_JSON,
             reportFile: env.REPORT_FILE,
             sbomFile: env.SBOM_FILE,
