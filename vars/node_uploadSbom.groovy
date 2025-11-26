@@ -25,19 +25,17 @@ def call(Map config = [:]) {
     writeFile file: payloadFile, text: payload
 
     withCredentials([string(credentialsId: dtApiKeyCredentialId, variable: 'DT_API_KEY')]) {
-        def httpCode = bashScript("""
-        ls -l "${payloadFile}"
-        head "${payloadFile}"
+        def result = bashScript("""
         #!/usr/bin/bash
         set -o pipefail
-        echo "curl command:" curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
-        -H "Content-Type: application/json" -H "X-Api-Key: $DT_API_KEY" \
-        --data @"${payloadFile}"
-        curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
-            -H "Content-Type: application/json" -H "X-Api-Key: \$DT_API_KEY" \
-            --data @${payloadFile}
-        """, "upload_sbom.sh").trim()
-        echo "SBOM upload HTTP status: ${httpCode}"
+        # Curl with verbose output, save payload and response
+        echo "Uploading SBOM with:"
+        ls -l "${payloadFile}"
+        curl -v -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
+            -H "Content-Type: application/json" -H "X-Api-Key: \\$DT_API_KEY" \
+            --data @"${payloadFile}"
+        """, "upload_sbom.sh")
+        echo "Curl output/result: ${result}"
         sh 'cat dt-upload-response.json || true'
         if (!(httpCode == '200' || httpCode == '201')) {
             error "SBOM upload failed (HTTP ${httpCode})"
