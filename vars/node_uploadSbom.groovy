@@ -32,19 +32,15 @@ def call(Map config = [:]) {
                     -H "Content-Type: application/json" -H "X-Api-Key: $DT_API_KEY" \
                     --data @"${payloadFile}"
                 """, "upload_sbom.sh")
-            def result = bashScript("""
-                #!/usr/bin/bash
-                echo 'Hello World'
+            def curlOut = bashScript("""
+                    #!/usr/bin/bash
+                    curl -s -o /dev/null -w "%{http_code}" http://localhost:8080
                 """)
-                echo "BASHSCRIPT OUTPUT: ${result}"
-            // httpCode = curlOut?.trim() ?: '000'
-            // echo 'this is httpCode:' + httpCode
+                echo "HTTP CODE: ${curlOut}"
         } catch (Exception e) {
             echo "Error in SBOM upload: ${e.getMessage()}"
             httpCode = 'exception'
         }
-
-        echo "SBOM upload HTTP status: ${httpCode}"
 
         if (!(httpCode == '200' || httpCode == '201')) {
             error "SBOM upload failed (HTTP ${httpCode})"
