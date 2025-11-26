@@ -21,7 +21,7 @@ def call(Map config = [:]) {
     ])
     writeFile file: payloadFile, text: payload
 
-    def httpCode = '000'
+    // def httpCode = '000'
     def projectUuid = ''
     withCredentials([string(credentialsId: dtApiKeyCredentialId, variable: 'DT_API_KEY')]) {
         try {
