@@ -10,36 +10,18 @@ pipeline {
     SBOM_FILE = 'sbom.json'
     VULN_JSON = 'dt-vulnerabilities.json'
     REPORT_FILE = 'vulnerability-report.html'
-
-    // Artifactory / npm settings - change or set in job config:
-    ARTIFACTORY_NPM_REGISTRY = "${ARTIFACTORY_NPM_REGISTRY ?: 'https://artifactory.example.com/artifactory/api/npm/npm-repo/'}"
-    NPM_TOKEN_CREDENTIAL_ID = "${NPM_TOKEN_CREDENTIAL_ID ?: 'artifactory-npm-token'}"
+    // Artifactory/NPM registry settings removed
   }
 
   stages {
-    stage('Checkout') {
+    stage('Checkout testcafe-api') {
       steps {
-        checkout scm
+        git url: 'git@github.com:duncanlester/testcafe-api.git', credentialsId: 'duncanlester'
       }
     }
 
-    stage('Prepare .npmrc (Artifactory)') {
+    stage('Install deps') {
       steps {
-        // inject npm token from Jenkins Secret Text
-        withCredentials([string(credentialsId: env.NPM_TOKEN_CREDENTIAL_ID, variable: 'NPM_TOKEN')]) {
-          sh '''
-            chmod +x ./scripts/create-npmrc.sh
-            ARTIFACTORY_NPM_REGISTRY="${ARTIFACTORY_NPM_REGISTRY}" NPM_TOKEN="${NPM_TOKEN}" ./scripts/create-npmrc.sh
-            echo "Created .npmrc pointing to ${ARTIFACTORY_NPM_REGISTRY}"
-            sed -E 's/:_authToken=.*/:_authToken=REDACTED/' .npmrc || true
-          '''
-        }
-      }
-    }
-
-    stage('Install deps (optional)') {
-      steps {
-        // npm will use .npmrc in workspace
         sh '''
           if [ -f package-lock.json ]; then
             npm ci --prefer-offline --no-audit --progress=false

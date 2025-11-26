@@ -1,5 +1,6 @@
 services:
   postgres:
+    container_name: dtrack-postgres
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: dtrack
@@ -16,6 +17,7 @@ services:
       - dtrack-network
 
   dependency-track-apiserver:
+    container_name: dtrack-apiserver
     image: dependencytrack/apiserver:latest
     depends_on:
       postgres:
@@ -40,6 +42,7 @@ services:
       - dtrack-network
 
   dependency-track-frontend:
+    container_name: dtrack-frontend
     image: dependencytrack/frontend:latest
     depends_on:
       - dependency-track-apiserver
@@ -67,8 +70,8 @@ services:
     networks:
       - dtrack-network
     volumes:
-      - jenkins_home_data:/var/jenkins_home
-      - jenkins_plugins:/var/jenkins_home/plugins
+      - jenkins_home_data_1:/var/jenkins_home
+    #   - jenkins_plugins:/var/jenkins_home/plugins
     restart: always
     secrets:
       - admin_password
@@ -82,9 +85,7 @@ volumes:
     external: true
   dtrack_apiserver_data:
     external: true
-  jenkins_home_data:
-    external: true
-  jenkins_plugins:
+  jenkins_home_data_1:
     external: true
 
 networks:
