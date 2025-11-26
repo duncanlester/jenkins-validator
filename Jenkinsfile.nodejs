@@ -24,10 +24,13 @@ pipeline {
       }
     }
 
-    stage('Install deps') {
+    stage('which bash') {
       steps {
         sh 'which bash'
       }
+    }
+
+    stage('Install deps') {
       steps {
         script {
           writeFile file: 'run_with_pipefail.sh', text: '''
