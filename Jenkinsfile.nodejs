@@ -26,15 +26,7 @@ pipeline {
 
     stage('Install deps') {
       steps {
-        sh '''
-          #!/bin/bash
-          set -o pipefail
-          if [ -f package-lock.json ]; then
-            npm ci --prefer-offline --no-audit --progress=false
-          else
-            npm install --prefer-offline --no-audit --progress=false
-          fi
-        '''
+        sh 'bash -c "set -o pipefail && npm ci || npm install"'
       }
     }
 
