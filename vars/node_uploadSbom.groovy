@@ -1,5 +1,3 @@
-// Uploads a base64-encoded SBOM for Node projects to Dependency-Track and returns the project UUID.
-// Expects: dtApiUrl, dtApiKeyCredentialId, projectName, projectVersion, sbomFile.
 import groovy.json.JsonOutput
 import java.net.URLEncoder
 
@@ -23,25 +21,18 @@ def call(Map config = [:]) {
     ])
     writeFile file: payloadFile, text: payload
 
-    def httpCode = '000' // Default (network/unknown error)
-    def curlOutput = ''
+    def httpCode = '000'
     def projectUuid = ''
     withCredentials([string(credentialsId: dtApiKeyCredentialId, variable: 'DT_API_KEY')]) {
         try {
-            curlOutput = bashScript("""
-            #!/usr/bin/bash
-            set -o pipefail
-            echo "Uploading SBOM with:"
-            ls -l "${payloadFile}"
-            httpCode=\$(curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
-                -H "Content-Type: application/json" -H "X-Api-Key: \\$DT_API_KEY" \
-                --data @"${payloadFile}")
-            echo "\${httpCode}"
-            """, "upload_sbom.sh")
-            curlOutput = curlOutput ? curlOutput.trim() : ''
-            echo "Curl output/result: ${curlOutput}"
-            sh 'cat dt-upload-response.json || true'
-            httpCode = curlOutput?.trim() ?: '000'
+            def curlOut = bashScript("""
+                #!/usr/bin/bash
+                set -o pipefail
+                curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
+                    -H "Content-Type: application/json" -H "X-Api-Key: $DT_API_KEY" \
+                    --data @"${payloadFile}"
+                """, "upload_sbom.sh")
+            httpCode = curlOut?.trim() ?: '000'
         } catch (Exception e) {
             echo "Error in SBOM upload: ${e.getMessage()}"
             httpCode = 'exception'
