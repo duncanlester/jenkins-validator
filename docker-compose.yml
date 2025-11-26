@@ -60,7 +60,8 @@ services:
 
   jenkins-master:
     container_name: jenkins-master
-    image: jenkins/jenkins:lts
+    build: .
+    user: root
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
       - JENKINS_URL=http://jenkins-master:8080
@@ -75,6 +76,12 @@ services:
     restart: always
     secrets:
       - admin_password
+
+  node-service:
+    image: node:14
+    container_name: node-service
+    networks:
+    - dtrack-network
 
 secrets:
   admin_password:

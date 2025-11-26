@@ -1,6 +1,4 @@
 FROM jenkins/jenkins:lts
-
 USER root
-COPY plugins/*.jpi /var/jenkins_home/plugins/
-RUN chown -R jenkins:jenkins /var/jenkins_home/plugins/
-USER jenkins
+RUN apt-get update && apt-get install -y docker.io
+RUN groupadd -g 999 docker && usermod -aG docker jenkins
