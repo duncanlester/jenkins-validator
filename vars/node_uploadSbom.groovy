@@ -37,7 +37,8 @@ def call(Map config = [:]) {
                 -H "Content-Type: application/json" -H "X-Api-Key: \\$DT_API_KEY" \
                 --data @"${payloadFile}")
             echo "\${httpCode}"
-            """, "upload_sbom.sh").trim()
+            """, "upload_sbom.sh")
+            curlOutput = curlOutput ? curlOutput.trim() : ''
             echo "Curl output/result: ${curlOutput}"
             sh 'cat dt-upload-response.json || true'
             httpCode = curlOutput.tokenize('\n')[-1] // Get last line (httpCode)
