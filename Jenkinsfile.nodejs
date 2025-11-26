@@ -20,14 +20,16 @@ pipeline {
 
   stages {
     stage('Checkout testcafe-api') {
-      steps {
-        git url: 'https://github.com/duncanlester/testcafe-api.git', credentialsId: 'duncanlester'
+        steps {
+          git url: 'https://github.com/duncanlester/testcafe-api.git', credentialsId: 'duncanlester'
+        }
       }
-    }
 
-    stage('which bash') {
+    stage('Network Diagnostics') {
       steps {
-        sh 'which bash'
+        sh 'getent hosts dtrack-apiserver || echo "DNS FAIL"'
+        sh 'ping -c2 dtrack-apiserver || echo "PING FAIL"'
+        sh 'curl -v http://dtrack-apiserver:8080/api/version || echo "CURL FAIL"'
       }
     }
 
