@@ -26,7 +26,7 @@ pipeline {
 
     stage('Checkout validation-library') {
       steps {
-        git url: 'https://github.com/duncanlester/validation-library.git', credentialsId: 'duncanlester'
+        git url: 'https://github.com/duncanlester/jenkins-validator.git', credentialsId: 'duncanlester'
       }
     }
     stage('Install deps') {
