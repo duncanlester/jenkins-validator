@@ -41,7 +41,7 @@ def call(Map config = [:]) {
             curlOutput = curlOutput ? curlOutput.trim() : ''
             echo "Curl output/result: ${curlOutput}"
             sh 'cat dt-upload-response.json || true'
-            httpCode = curlOutput.tokenize('\n')[-1] // Get last line (httpCode)
+            httpCode = curlOutput?.trim() ?: '000'
         } catch (Exception e) {
             echo "Error in SBOM upload: ${e.getMessage()}"
             httpCode = 'exception'
