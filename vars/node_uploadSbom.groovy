@@ -5,7 +5,7 @@ import groovy.json.JsonOutput
 import java.net.URLEncoder
 
 def call(Map config = [:]) {
-    String dtApiUrl = config.get('dtApiUrl') ?: env.DT_API_URL ?: 'http://localhost:8081'
+    String dtApiUrl = config.get('dtApiUrl') ?: env.DT_API_URL ?: 'http://dtrack-apiserver:8080'
     String dtApiKeyCredentialId = config.get('dtApiKeyCredentialId') ?: 'dependency-track-api-key'
     String projectName = config.get('projectName') ?: env.PROJECT_NAME ?: env.JOB_NAME ?: 'node-project'
     String projectVersion = config.get('projectVersion') ?: env.BUILD_NUMBER ?: '1.0.0'
@@ -26,6 +26,8 @@ def call(Map config = [:]) {
 
     withCredentials([string(credentialsId: dtApiKeyCredentialId, variable: 'DT_API_KEY')]) {
         def httpCode = bashScript("""
+        ls -l "${payloadFile}"
+        head "${payloadFile}"
         #!/usr/bin/bash
         set -o pipefail
         echo "curl command:" curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
