@@ -1,4 +1,3 @@
-// vars/node_uploadSbom.groovy
 // Uploads a base64-encoded SBOM for Node projects to Dependency-Track and returns the project UUID.
 // Expects: dtApiUrl, dtApiKeyCredentialId, projectName, projectVersion, sbomFile.
 import groovy.json.JsonOutput
@@ -24,38 +23,53 @@ def call(Map config = [:]) {
     ])
     writeFile file: payloadFile, text: payload
 
+    def httpCode = '000' // Default (network/unknown error)
+    def curlOutput = ''
+    def projectUuid = ''
     withCredentials([string(credentialsId: dtApiKeyCredentialId, variable: 'DT_API_KEY')]) {
-        def result = bashScript("""
-        #!/usr/bin/bash
-        set -o pipefail
-        # Curl with verbose output, save payload and response
-        echo "Uploading SBOM with:"
-        ls -l "${payloadFile}"
-        curl -v -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
-            -H "Content-Type: application/json" -H "X-Api-Key: \\$DT_API_KEY" \
-            --data @"${payloadFile}"
-        """, "upload_sbom.sh")
-        echo "Curl output/result: ${result}"
-        sh 'cat dt-upload-response.json || true'
+        try {
+            curlOutput = bashScript("""
+            #!/usr/bin/bash
+            set -o pipefail
+            echo "Uploading SBOM with:"
+            ls -l "${payloadFile}"
+            httpCode=\$(curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
+                -H "Content-Type: application/json" -H "X-Api-Key: \\$DT_API_KEY" \
+                --data @"${payloadFile}")
+            echo "\${httpCode}"
+            """, "upload_sbom.sh").trim()
+            echo "Curl output/result: ${curlOutput}"
+            sh 'cat dt-upload-response.json || true'
+            httpCode = curlOutput.tokenize('\n')[-1] // Get last line (httpCode)
+        } catch (Exception e) {
+            echo "Error in SBOM upload: ${e.getMessage()}"
+            httpCode = 'exception'
+        }
+
+        echo "SBOM upload HTTP status: ${httpCode}"
+
         if (!(httpCode == '200' || httpCode == '201')) {
             error "SBOM upload failed (HTTP ${httpCode})"
         }
 
         // locate project UUID
-        def projectUuid = ''
         for (int i = 0; i < 10; i++) {
-            def uuidScript = """
-            #!/usr/bin/bash
-            curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/project?name=${URLEncoder.encode(projectName, 'UTF-8')}" | jq -r '.[0].uuid // empty'
-            """
-            projectUuid = bashScript(uuidScript, "get_project_uuid.sh").trim()
-            if (projectUuid) break
+            try {
+                def uuidScript = """
+                #!/usr/bin/bash
+                curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/project?name=${URLEncoder.encode(projectName, 'UTF-8')}" | jq -r '.[0].uuid // empty'
+                """
+                projectUuid = bashScript(uuidScript, "get_project_uuid.sh").trim()
+                if (projectUuid) break
+            } catch (Exception e) {
+                echo "Error during UUID lookup: ${e.getMessage()}"
+            }
             sleep 2
         }
         if (!projectUuid) {
             error "Project UUID not found for project '${projectName}' after upload"
         }
         echo "Found project UUID: ${projectUuid}"
-        return projectUuid
     }
+    return [httpCode: httpCode, projectUuid: projectUuid]
 }
