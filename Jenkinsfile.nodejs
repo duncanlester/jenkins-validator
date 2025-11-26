@@ -26,7 +26,7 @@ pipeline {
 
     stage('Install deps') {
       steps {
-        sh(script '''
+        sh(script: '''
           set -o pipefail
           if [ -f package-lock.json ]; then
             npm ci --prefer-offline --no-audit --progress=false
