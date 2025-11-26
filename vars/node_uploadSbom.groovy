@@ -28,6 +28,9 @@ def call(Map config = [:]) {
         def httpCode = bashScript("""
         #!/usr/bin/bash
         set -o pipefail
+        echo "curl command:" curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
+        -H "Content-Type: application/json" -H "X-Api-Key: $DT_API_KEY" \
+        --data @"${payloadFile}"
         curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
             -H "Content-Type: application/json" -H "X-Api-Key: \$DT_API_KEY" \
             --data @${payloadFile}
