@@ -39,7 +39,7 @@ pipeline {
     stage('Generate SBOM') {
       steps {
         script {
-          def sbom = generateSbom(sbomFile: env.SBOM_FILE, installIfMissing: false)
+          def sbom = generateNodeSbom(sbomFile: env.SBOM_FILE, installIfMissing: false)
           echo "SBOM: ${sbom}"
         }
       }
@@ -48,7 +48,7 @@ pipeline {
     stage('Upload SBOM') {
       steps {
         script {
-          def uuid = uploadSbom(
+          def uuid = node_uploadSbom(
             dtApiUrl: env.DT_API_URL,
             dtApiKeyCredentialId: env.DT_API_KEY_CRED,
             projectName: env.PROJECT_NAME,
@@ -65,7 +65,7 @@ pipeline {
       steps {
         script {
           def uuid = readFile('project-uuid.txt').trim()
-          def vulnFile = fetchVulnerabilities(
+          def vulnFile = node_fetchVulnerabilities(
             dtApiUrl: env.DT_API_URL,
             dtApiKeyCredentialId: env.DT_API_KEY_CRED,
             projectUuid: uuid,
@@ -81,7 +81,7 @@ pipeline {
     stage('Render Report') {
       steps {
         script {
-          def report = renderNodeReport(
+          def report = node_renderNodeReport(
             vulnJsonFile: env.VULN_JSON,
             reportFile: env.REPORT_FILE,
             sbomFile: env.SBOM_FILE,
