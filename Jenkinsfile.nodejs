@@ -69,8 +69,8 @@ pipeline {
             projectVersion: env.PROJECT_VERSION,
             sbomFile: env.SBOM_FILE
           )
-          echo "Project UUID: ${result.projectUuid}"
-          writeFile file: 'project-uuid.txt', text: result.projectUuid
+          echo "Project UUID: ${uuid.projectUuid}"
+          writeFile file: 'project-uuid.txt', text: uuid.projectUuid
         }
       }
     }
