@@ -25,8 +25,18 @@ pipeline {
     }
 
     stage('Install deps') {
-      steps {
-        sh 'bash -c "set -o pipefail && npm ci || npm install"'
+      script {
+        writeFile file: 'run_deps.sh', text: '''
+            #!/bin/bash
+            set -o pipefail
+            if [ -f package-lock.json ]; then
+              npm ci --prefer-offline --no-audit --progress=false
+            else
+              npm install --prefer-offline --no-audit --progress=false
+            fi
+        '''
+        sh 'chmod +x run_deps.sh'
+        sh 'bash ./run_deps.sh'
       }
     }
 
