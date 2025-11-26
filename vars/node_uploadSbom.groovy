@@ -25,11 +25,13 @@ def call(Map config = [:]) {
     writeFile file: payloadFile, text: payload
 
     withCredentials([string(credentialsId: dtApiKeyCredentialId, variable: 'DT_API_KEY')]) {
-        def httpCode = sh(script: """set -o pipefail
-curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
-  -H "Content-Type: application/json" -H "X-Api-Key: \$DT_API_KEY" \
-  --data @${payloadFile}
-""", returnStdout: true).trim()
+        def httpCode = bashScript("""
+        #!/usr/bin/bash
+        set -o pipefail
+        curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
+            -H "Content-Type: application/json" -H "X-Api-Key: \$DT_API_KEY" \
+            --data @${payloadFile}
+        """, "upload_sbom.sh").trim()
         echo "SBOM upload HTTP status: ${httpCode}"
         sh 'cat dt-upload-response.json || true'
         if (!(httpCode == '200' || httpCode == '201')) {
@@ -39,7 +41,11 @@ curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/
         // locate project UUID
         def projectUuid = ''
         for (int i = 0; i < 10; i++) {
-            projectUuid = sh(script: """curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/project?name=${URLEncoder.encode(projectName, 'UTF-8')}" | jq -r '.[0].uuid // empty'""", returnStdout: true).trim()
+            def uuidScript = """
+            #!/usr/bin/bash
+            curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/project?name=${URLEncoder.encode(projectName, 'UTF-8')}" | jq -r '.[0].uuid // empty'
+            """
+            projectUuid = bashScript(uuidScript, "get_project_uuid.sh").trim()
             if (projectUuid) break
             sleep 2
         }

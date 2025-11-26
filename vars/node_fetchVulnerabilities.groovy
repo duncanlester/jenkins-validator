@@ -19,14 +19,27 @@ def call(Map config = [:]) {
         int vulnCount = 0
         while (attempt < pollAttempts) {
             attempt++
-            vulnCount = (sh(script: """curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/vulnerability/project/${projectUuid}" | jq 'length'""", returnStdout: true).trim() ?: '0') as Integer
+            def vulnScript = """
+                #!/usr/bin/bash
+                curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/vulnerability/project/${projectUuid}" | jq 'length'
+            """
+            vulnCount = (bashScript(vulnScript, "get_vuln_count.sh").trim() ?: '0') as Integer
             echo "Attempt ${attempt}: vulnerability count = ${vulnCount}"
             if (vulnCount > 0) break
             sleep pollIntervalSeconds
         }
 
-        sh(script: """curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/vulnerability/project/${projectUuid}" -o ${vulnJsonFile} || true""")
-        echo "Saved vulnerabilities to ${vulnJsonFile} (size: \$(wc -c < ${vulnJsonFile} || echo 0) bytes)"
+        def saveVulnScript = """
+            #!/usr/bin/bash
+            curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/vulnerability/project/${projectUuid}" -o ${vulnJsonFile} || true
+        """
+        bashScript(saveVulnScript, "save_vuln_json.sh")
+        def sizeScript = """
+            #!/usr/bin/bash
+            wc -c < ${vulnJsonFile} || echo 0
+        """
+        def vulnFileSize = bashScript(sizeScript, "get_vuln_size.sh").trim()
+        echo "Saved vulnerabilities to ${vulnJsonFile} (size: ${vulnFileSize} bytes)"
     }
     return vulnJsonFile
 }
