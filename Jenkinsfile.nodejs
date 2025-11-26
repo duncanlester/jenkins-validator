@@ -35,10 +35,13 @@ pipeline {
         script {
           script {
             writeFile file: 'run_with_pipefail.sh', text: '''
-              #!/usr/bin/bash
+              #!/bin/bash
               set -o pipefail
-              echo "This is running in bash"
-              ls not_a_real_file | grep something || echo "Pipefail triggered"
+              if [ -f package-lock.json ]; then
+                npm ci --prefer-offline --no-audit --progress=false
+              else
+                npm install --prefer-offline --no-audit --progress=false
+              fi
             '''
             sh 'chmod +x run_with_pipefail.sh'
             sh 'bash ./run_with_pipefail.sh'
@@ -108,7 +111,7 @@ pipeline {
 
   post {
     always {
-      sh 'rm -f .npmrc || true'
+      sh 'bash rm -f .npmrc || true'
       archiveArtifacts artifacts: 'sbom.json, dt-vulnerabilities.json, vulnerability-report.html', allowEmptyArchive: true
     }
   }
