@@ -24,11 +24,6 @@ pipeline {
       }
     }
 
-sh(script: '''
-      set -o pipefail
-      echo "Running bash with pipefail in Node 18 container"
-      ls not_a_real_file | grep something || echo "Pipefail demo: should see this line"
-    ''', shell: '/bin/bash')
     stage('Install deps') {
       steps {
         sh(script '''
