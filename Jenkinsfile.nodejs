@@ -24,6 +24,11 @@ pipeline {
       }
     }
 
+    stage('Checkout validation-library') {
+      steps {
+        git url: 'https://github.com/duncanlester/validation-library.git', credentialsId: 'duncanlester'
+      }
+    }
     stage('Install deps') {
       steps {
         sh '''
