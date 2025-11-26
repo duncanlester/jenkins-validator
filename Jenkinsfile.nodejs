@@ -23,12 +23,7 @@ pipeline {
         git url: 'https://github.com/duncanlester/testcafe-api.git', credentialsId: 'duncanlester'
       }
     }
-
-    stage('Checkout validation-library') {
-      steps {
-        git url: 'https://github.com/duncanlester/jenkins-validator.git', credentialsId: 'duncanlester'
-      }
-    }
+    
     stage('Install deps') {
       steps {
         sh '''
