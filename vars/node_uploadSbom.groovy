@@ -21,17 +21,17 @@ def call(Map config = [:]) {
     ])
     writeFile file: payloadFile, text: payload
 
-    // def httpCode = '000'
+    def httpCode = '000'
     def projectUuid = ''
     withCredentials([string(credentialsId: dtApiKeyCredentialId, variable: 'DT_API_KEY')]) {
         try {
             def curlOut = bashScript("""
                 #!/usr/bin/bash
                 curl -s -o dt-upload-response.json -w "%{http_code}" -X PUT "${dtApiUrl}/api/v1/bom" \
-                    -H "Content-Type: application/json" -H "X-Api-Key: $DT_API_KEY" \
+                    -H "Content-Type: applica
                     --data @"${payloadFile}" || true
             """, "upload_sbom.sh")
-            def httpCode = curlOut?.trim() ?: '000'
+            httpCode = curlOut?.trim() ?: '000'
             def out = bashScript("""
                 #!/usr/bin/bash
                 curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 || true
