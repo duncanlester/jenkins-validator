@@ -26,6 +26,9 @@ pipeline {
 
     stage('Install deps') {
       steps {
+        sh 'which bash'
+      }
+      steps {
         script {
           writeFile file: 'run_with_pipefail.sh', text: '''
             #!/bin/bash
