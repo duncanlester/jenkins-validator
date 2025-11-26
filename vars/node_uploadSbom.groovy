@@ -69,5 +69,6 @@ def call(Map config = [:]) {
         }
         echo "Found project UUID: ${projectUuid}"
     }
+    writeFile file: 'project-uuid.txt', text: groovy.json.JsonOutput.toJson([uploadToken: uploadToken, projectUuid: projectUuid])
     return [uploadToken: uploadToken, projectUuid: projectUuid]
 }
