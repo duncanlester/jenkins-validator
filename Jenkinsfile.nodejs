@@ -45,8 +45,8 @@ pipeline {
           """)
         }
       }
+      }
     }
-
     stage('Generate SBOM') {
       steps {
         script {
