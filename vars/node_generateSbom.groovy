@@ -22,7 +22,7 @@ def call(Map config = [:]) {
           echo "Installing latest @cyclonedx/cyclonedx-npm globally..."
           npm install -g @cyclonedx/cyclonedx-npm@3 --no-progress --no-audit
         fi
-        cyclonedx-npm --output-format json --output-file ${sbomFile} --include-dev
+        cyclonedx-npm --output-format json --output-file ${sbomFile}
         echo "SBOM generated: \$(wc -c < ${sbomFile} || echo 0) bytes"
         cat ${sbomFile} | grep purl | head -20
     """
