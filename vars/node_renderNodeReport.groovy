@@ -9,7 +9,7 @@ def parseVulns(raw) {
     } catch (Exception e) {
         return []
     }
-    // Defensive: handle object or array response
+    // always produce a list
     if (!(vulns instanceof List)) {
         if (vulns?.vulnerabilities instanceof List) {
             vulns = vulns.vulnerabilities
@@ -19,21 +19,21 @@ def parseVulns(raw) {
             vulns = []
         }
     }
-
-    // Return only scalars (string/int) in the maps -- never full objects/lists!
-    vulns.collect { v ->
+    // Only return safe maps: every field flattened to string
+    def result = []
+    for (v in vulns) {
         def affectedName = (
             v?.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref ?
                 (v.affects[0].ref.toString().contains('@')
                     ? v.affects[0].ref.toString().split('@')[0]
                     : v.affects[0].ref.toString())
                 : (v.component ?: v.package ?: v.pkg ?: v.plugin ?: v.name ?: 'unknown')
-        )
+        )?.toString()
         def affectedVersion = (
             v?.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref && v.affects[0].ref.toString().contains('@')
                 ? v.affects[0].ref.toString().split('@')[-1]
                 : (v.version ?: '')
-        )
+        )?.toString()
         def severity = (
             v?.ratings instanceof List && v.ratings.size() > 0 && v.ratings[0]?.severity
                 ? v.ratings[0].severity.toString().toUpperCase()
@@ -44,8 +44,8 @@ def parseVulns(raw) {
                 ? v.ratings[0].score.toString()
                 : ''
         )
-        def id = (v.id ?: v.cve ?: v.name ?: 'N/A').toString()
-        def desc = (v.description ?: v.summary ?: '').toString()
+        def id = (v.id ?: v.cve ?: v.name ?: 'N/A')?.toString()
+        def desc = (v.description ?: v.summary ?: '')?.toString()
         def link = ''
         if (v?.source?.url) {
             def sourceUrl = v.source.url.toString()
@@ -54,7 +54,7 @@ def parseVulns(raw) {
         } else if (v?.url) {
             link = "<a href='${escapeHtml(v.url.toString())}' target='_blank'>advisory</a>"
         }
-        [
+        result << [
             affectedName: affectedName,
             affectedVersion: affectedVersion,
             id: id,
@@ -64,6 +64,7 @@ def parseVulns(raw) {
             link: link
         ]
     }
+    return result
 }
 
 @NonCPS
@@ -78,15 +79,16 @@ def parsePackages(raw) {
     if (!sbom?.components) {
         return []
     }
-    // Only take flat primitives
-    sbom.components.collect { c ->
-        [
+    def result = []
+    for (c in sbom.components) {
+        result << [
             name: c.name?.toString(),
             version: (c.version ?: '')?.toString(),
             type: (c.type ?: '')?.toString(),
             purl: (c.purl ?: '')?.toString()
         ]
     }
+    return result
 }
 
 def escapeHtml(s) {
@@ -157,9 +159,9 @@ def call(Map config = [:]) {
             html << "<td>${i + 1}</td>"
             html << "<td>${escapeHtml(v.affectedName)}</td>"
             html << "<td>${escapeHtml(v.affectedVersion)}</td>"
-            html << "<td><pre class='small'>${escapeHtml(v.id.toString())}</pre></td>"
+            html << "<td><pre class='small'>${escapeHtml(v.id)}</pre></td>"
             html << "<td>${escapeHtml(v.severity)}</td>"
-            html << "<td>${escapeHtml(v.score.toString())}</td>"
+            html << "<td>${escapeHtml(v.score)}</td>"
             html << "<td><pre>${escapeHtml(v.desc)}</pre></td>"
             html << "<td>${v.link}</td>"
             html << "</tr>\n"
