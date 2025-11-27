@@ -3,7 +3,12 @@ import groovy.json.JsonSlurper
 @NonCPS
 def parseVulns(raw) {
     if (!raw?.trim()) return []
-    def vulns = new JsonSlurper().parseText(raw)
+    def vulns
+    try {
+        vulns = new JsonSlurper().parseText(raw)
+    } catch (Exception e) {
+        return []
+    }
     if (!(vulns instanceof List)) {
         if (vulns?.vulnerabilities instanceof List) {
             vulns = vulns.vulnerabilities
@@ -13,26 +18,34 @@ def parseVulns(raw) {
             vulns = []
         }
     }
-    // Only return a List of Maps with primitive fields (safe for pipeline)
+    // Extract only flat strings/numbers for each row
     vulns.collect { v ->
+        def affectedName = (v?.affects && v.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref) ?
+            (v.affects[0].ref.toString().contains('@') ?
+                v.affects[0].ref.toString().substring(0, v.affects[0].ref.toString().lastIndexOf('@')) :
+                v.affects[0].ref.toString()) :
+            (v.component ?: v.package ?: v.pkg ?: v.plugin ?: v.name ?: 'unknown')
+        def affectedVersion = (v?.affects && v.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref && v.affects[0].ref.toString().contains('@')) ?
+            v.affects[0].ref.toString().substring(v.affects[0].ref.toString().lastIndexOf('@') + 1) :
+            (v.version ?: '')
+        def id = v.id ?: v.cve ?: v.name ?: 'N/A'
+        def severity = (v.ratings && v.ratings instanceof List && v.ratings.size() > 0) ? (v.ratings[0].severity ?: '').toString().toUpperCase() : (v.severity ?: '').toString().toUpperCase()
+        def score = (v.ratings && v.ratings instanceof List && v.ratings.size() > 0) ? (v.ratings[0].score ?: '')?.toString() : ''
+        def desc = (v.description ?: v.summary ?: '')?.toString()
+        def link = ''
+        if (v?.source && v.source?.url) {
+            link = "<a href='${escapeHtml(v.source.url.toString())}' target='_blank'>${escapeHtml((v.source.name ?: 'source').toString())}</a>"
+        } else if (v?.url) {
+            link = "<a href='${escapeHtml(v.url.toString())}' target='_blank'>advisory</a>"
+        }
         [
-            affectedName: (
-                (v?.affects && v.affects.size() > 0 && v.affects[0].ref) ?
-                    (v.affects[0].ref.toString().contains("@") ?
-                        v.affects[0].ref.toString().substring(0, v.affects[0].ref.toString().lastIndexOf("@")) :
-                        v.affects[0].ref.toString()) :
-                (v.component ?: v.package ?: v.pkg ?: v.plugin ?: v.name ?: 'unknown')
-            ),
-            affectedVersion: (
-                (v?.affects && v.affects.size() > 0 && v.affects[0].ref && v.affects[0].ref.toString().contains("@")) ?
-                    v.affects[0].ref.toString().substring(v.affects[0].ref.toString().lastIndexOf("@") + 1) :
-                (v.version ?: '')
-            ),
-            id: v.id ?: v.cve ?: v.name ?: 'N/A',
-            severity: (v.ratings && v.ratings.size() > 0) ? (v.ratings[0].severity ?: '').toString().toUpperCase() : (v.severity ?: '').toString().toUpperCase(),
-            score: (v.ratings && v.ratings.size() > 0) ? (v.ratings[0].score ?: '') : '',
-            desc: v.description ?: v.summary ?: '',
-            link: (v?.source?.url) ? "<a href='${escapeHtml(v.source.url)}' target='_blank'>${escapeHtml(v.source.name ?: 'source')}</a>" : ((v?.url) ? "<a href='${escapeHtml(v.url)}' target='_blank'>advisory</a>" : ''),
+            affectedName: affectedName?.toString(),
+            affectedVersion: affectedVersion?.toString(),
+            id: id?.toString(),
+            severity: severity?.toString(),
+            score: score,
+            desc: desc,
+            link: link
         ]
     }
 }
@@ -40,14 +53,21 @@ def parseVulns(raw) {
 @NonCPS
 def parsePackages(raw) {
     if (!raw?.trim()) return []
-    def sbom = new JsonSlurper().parseText(raw)
-    // Only return a List of simple Maps
-    (sbom.components ?: []).collect { c ->
+    def sbom
+    try {
+        sbom = new JsonSlurper().parseText(raw)
+    } catch (Exception e) {
+        return []
+    }
+    if (!sbom?.components) {
+        return []
+    }
+    return sbom.components.collect { c ->
         [
-            name: c.name,
-            version: c.version ?: '',
-            type: c.type ?: '',
-            purl: c.purl ?: ''
+            name: c.name?.toString(),
+            version: (c.version ?: '')?.toString(),
+            type: (c.type ?: '')?.toString(),
+            purl: (c.purl ?: '')?.toString()
         ]
     }
 }
@@ -55,8 +75,11 @@ def parsePackages(raw) {
 def escapeHtml(s) {
     if (s == null) return ''
     s = s.toString()
-    s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-     .replaceAll('"', '&quot;').replaceAll("'", '&#39;')
+    s.replaceAll('&', '&amp;')
+     .replaceAll('<', '&lt;')
+     .replaceAll('>', '&gt;')
+     .replaceAll('"', '&quot;')
+     .replaceAll("'", '&#39;')
 }
 
 def call(Map config = [:]) {
@@ -101,7 +124,6 @@ def call(Map config = [:]) {
     html << "    <div><strong>Project:</strong> ${escapeHtml(projectName)}</div>\n"
     html << "    <div><strong>Version:</strong> ${escapeHtml(projectVersion)}</div>\n"
     html << "    <div><strong>Generated:</strong> ${new Date().toString()}</div>\n"
-
     html << "    <h2>Vulnerability Summary</h2>\n"
     html << "    <div>Total Packages: ${packageCount}</div>\n"
     html << "    <div class='${summaryColorClass}'>Vulnerabilities: ${vulnCount} found</div>\n"
