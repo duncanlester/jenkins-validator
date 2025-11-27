@@ -2,6 +2,22 @@
 // Returns the vulnerability JSON filepath.
 import groovy.json.JsonSlurper
 
+@NonCPS
+def countVulns(String jsonText) {
+    def parsed
+    try {
+        parsed = new JsonSlurper().parseText(jsonText)
+    } catch (Exception e) {
+        return 0
+    }
+    if (parsed instanceof List) {
+        return parsed.size()
+    } else if (parsed?.vulnerabilities instanceof List) {
+        return parsed.vulnerabilities.size()
+    }
+    return 0
+}
+
 def call(Map config = [:]) {
     String dtApiUrl = config.get('dtApiUrl') ?: env.DT_API_URL ?: 'http://dtrack-apiserver:8080'
     String dtApiKeyCredentialId = config.get('dtApiKeyCredentialId') ?: 'dependency-track-api-key'
@@ -21,7 +37,6 @@ def call(Map config = [:]) {
 
         while (attempt < pollAttempts) {
             attempt++
-            // Get vulnerabilities JSON from Dependency-Track
             def vulnJson = sh(
                 script: """
                 curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/vulnerability/project/${projectUuid}"
@@ -29,23 +44,7 @@ def call(Map config = [:]) {
                 returnStdout: true
             ).trim()
 
-            // Count vulnerabilities using JsonSlurper (no jq)
-            vulnCount = 0
-            if (vulnJson) {
-                def parsed = null
-                try {
-                    parsed = new JsonSlurper().parseText(vulnJson)
-                } catch (Exception e) {
-                    echo "Warning: Could not parse vulnerabilities JSON: ${e.getMessage()}"
-                    parsed = []
-                }
-                if (parsed instanceof List) {
-                    vulnCount = parsed.size()
-                } else if (parsed?.vulnerabilities instanceof List) {
-                    vulnCount = parsed.vulnerabilities.size()
-                }
-            }
-
+            vulnCount = countVulns(vulnJson)
             echo "Attempt ${attempt}: vulnerability count = ${vulnCount}"
             if (vulnCount > 0) break
             sleep pollIntervalSeconds
