@@ -9,6 +9,7 @@ def parseVulns(raw) {
     } catch (Exception e) {
         return []
     }
+    // Defensive: handle object or array response
     if (!(vulns instanceof List)) {
         if (vulns?.vulnerabilities instanceof List) {
             vulns = vulns.vulnerabilities
@@ -18,31 +19,46 @@ def parseVulns(raw) {
             vulns = []
         }
     }
-    // Extract only flat strings/numbers for each row
+
+    // Return only scalars (string/int) in the maps -- never full objects/lists!
     vulns.collect { v ->
-        def affectedName = (v?.affects && v.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref) ?
-            (v.affects[0].ref.toString().contains('@') ?
-                v.affects[0].ref.toString().substring(0, v.affects[0].ref.toString().lastIndexOf('@')) :
-                v.affects[0].ref.toString()) :
-            (v.component ?: v.package ?: v.pkg ?: v.plugin ?: v.name ?: 'unknown')
-        def affectedVersion = (v?.affects && v.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref && v.affects[0].ref.toString().contains('@')) ?
-            v.affects[0].ref.toString().substring(v.affects[0].ref.toString().lastIndexOf('@') + 1) :
-            (v.version ?: '')
-        def id = v.id ?: v.cve ?: v.name ?: 'N/A'
-        def severity = (v.ratings && v.ratings instanceof List && v.ratings.size() > 0) ? (v.ratings[0].severity ?: '').toString().toUpperCase() : (v.severity ?: '').toString().toUpperCase()
-        def score = (v.ratings && v.ratings instanceof List && v.ratings.size() > 0) ? (v.ratings[0].score ?: '')?.toString() : ''
-        def desc = (v.description ?: v.summary ?: '')?.toString()
+        def affectedName = (
+            v?.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref ?
+                (v.affects[0].ref.toString().contains('@')
+                    ? v.affects[0].ref.toString().split('@')[0]
+                    : v.affects[0].ref.toString())
+                : (v.component ?: v.package ?: v.pkg ?: v.plugin ?: v.name ?: 'unknown')
+        )
+        def affectedVersion = (
+            v?.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref && v.affects[0].ref.toString().contains('@')
+                ? v.affects[0].ref.toString().split('@')[-1]
+                : (v.version ?: '')
+        )
+        def severity = (
+            v?.ratings instanceof List && v.ratings.size() > 0 && v.ratings[0]?.severity
+                ? v.ratings[0].severity.toString().toUpperCase()
+                : (v.severity ?: '').toString().toUpperCase()
+        )
+        def score = (
+            v?.ratings instanceof List && v.ratings.size() > 0 && v.ratings[0]?.score
+                ? v.ratings[0].score.toString()
+                : ''
+        )
+        def id = (v.id ?: v.cve ?: v.name ?: 'N/A').toString()
+        def desc = (v.description ?: v.summary ?: '').toString()
         def link = ''
-        if (v?.source && v.source?.url) {
-            link = "<a href='${escapeHtml(v.source.url.toString())}' target='_blank'>${escapeHtml((v.source.name ?: 'source').toString())}</a>"
+        if (v?.source?.url) {
+            def sourceUrl = v.source.url.toString()
+            def sourceName = (v.source.name ?: 'source').toString()
+            link = "<a href='${escapeHtml(sourceUrl)}' target='_blank'>${escapeHtml(sourceName)}</a>"
         } else if (v?.url) {
             link = "<a href='${escapeHtml(v.url.toString())}' target='_blank'>advisory</a>"
         }
         [
-            affectedName: affectedName?.toString(),
-            affectedVersion: affectedVersion?.toString(),
-            id: id?.toString(),
-            severity: severity?.toString(),
+            affectedName: affectedName,
+            affectedVersion: affectedVersion,
+            id: id,
+            severity: severity,
             score: score,
             desc: desc,
             link: link
@@ -62,7 +78,8 @@ def parsePackages(raw) {
     if (!sbom?.components) {
         return []
     }
-    return sbom.components.collect { c ->
+    // Only take flat primitives
+    sbom.components.collect { c ->
         [
             name: c.name?.toString(),
             version: (c.version ?: '')?.toString(),
@@ -76,10 +93,10 @@ def escapeHtml(s) {
     if (s == null) return ''
     s = s.toString()
     s.replaceAll('&', '&amp;')
-     .replaceAll('<', '&lt;')
-     .replaceAll('>', '&gt;')
-     .replaceAll('"', '&quot;')
-     .replaceAll("'", '&#39;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
 }
 
 def call(Map config = [:]) {
