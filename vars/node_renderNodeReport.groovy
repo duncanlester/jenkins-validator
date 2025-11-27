@@ -3,20 +3,20 @@ import groovy.json.JsonSlurper
 @NonCPS
 def parseVulns(raw) {
     if (!raw?.trim()) return []
-    def vulns
+    def parsed
     try {
-        vulns = new JsonSlurper().parseText(raw)
+        parsed = new JsonSlurper().parseText(raw)
     } catch (Exception e) {
         return []
     }
-    if (!(vulns instanceof List)) {
-        if (vulns?.vulnerabilities instanceof List) {
-            vulns = vulns.vulnerabilities
-        } else if (vulns) {
-            vulns = [vulns]
-        } else {
-            vulns = []
-        }
+    // Always produce a list -- never pass the parsed object!
+    def vulns = []
+    if (parsed instanceof List) {
+        vulns = parsed
+    } else if (parsed instanceof Map && parsed.vulnerabilities instanceof List) {
+        vulns = parsed.vulnerabilities
+    } else {
+        vulns = []
     }
     def result = new ArrayList()
     for (v in vulns) {
@@ -25,7 +25,7 @@ def parseVulns(raw) {
                 (v.affects[0].ref.toString().contains('@')
                     ? v.affects[0].ref.toString().split('@')[0]
                     : v.affects[0].ref.toString())
-                : (v.component ?: v.package ?: v.pkg ?: v.plugin ?: v.name ?: 'unknown')
+                : ([v.component, v.package, v.pkg, v.plugin, v.name].find { it } ?: 'unknown')
         )?.toString()
         def affectedVersion = (
             v?.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref && v.affects[0].ref.toString().contains('@')
@@ -68,17 +68,18 @@ def parseVulns(raw) {
 @NonCPS
 def parsePackages(raw) {
     if (!raw?.trim()) return []
-    def sbom
+    def parsed
     try {
-        sbom = new JsonSlurper().parseText(raw)
+        parsed = new JsonSlurper().parseText(raw)
     } catch (Exception e) {
         return []
     }
-    if (!sbom?.components) {
-        return []
+    def pkgs = []
+    if (parsed instanceof Map && parsed.components instanceof List) {
+        pkgs = parsed.components
     }
     def result = new ArrayList()
-    for (c in sbom.components) {
+    for (c in pkgs) {
         def row = new java.util.HashMap()
         row.put('name', c.name?.toString())
         row.put('version', (c.version ?: '')?.toString())
