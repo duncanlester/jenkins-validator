@@ -1,7 +1,21 @@
-// vars/node_renderNodeReport.groovy
 // Renders a vulnerability JSON file into an HTML report, publishes and archives it.
 // Returns the report filepath.
 import groovy.json.JsonSlurper
+
+@NonCPS
+def parseVulns(raw) {
+    if (!raw?.trim()) return []
+    def vulns = new JsonSlurper().parseText(raw)
+    if (!(vulns instanceof List)) {
+        if (vulns?.vulnerabilities instanceof List) {
+            vulns = vulns.vulnerabilities
+        } else {
+            if (vulns) { vulns = [vulns] }
+            else { vulns = [] }
+        }
+    }
+    return vulns
+}
 
 def call(Map config = [:]) {
     String vulnJsonFile = config.get('vulnJsonFile') ?: 'dt-vulnerabilities.json'
@@ -13,21 +27,11 @@ def call(Map config = [:]) {
 
     echo "node_renderNodeReport: input=${vulnJsonFile} output=${reportFile}"
 
+    // Only work with vulns as a primitive List—for each pipeline run
     def vulns = []
     try {
         def raw = readFile(file: vulnJsonFile)
-        if (raw?.trim()) {
-            vulns = new JsonSlurper().parseText(raw)
-            if (!(vulns instanceof List)) {
-                if (vulns?.vulnerabilities instanceof List) {
-                    vulns = vulns.vulnerabilities
-                } else {
-                    if (vulns) { vulns = [vulns] }
-                }
-            }
-        } else {
-            vulns = []
-        }
+        vulns = parseVulns(raw)
     } catch (err) {
         echo "Warning: failed to parse ${vulnJsonFile} - ${err.message}"
         vulns = []
@@ -130,6 +134,7 @@ def call(Map config = [:]) {
 </body>
 </html>
 """
+
     writeFile file: reportFile, text: html.toString(), encoding: 'UTF-8'
     echo "Wrote ${reportFile} (size: ${new File(reportFile).length()} bytes)"
 
