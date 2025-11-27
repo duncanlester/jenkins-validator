@@ -1,6 +1,3 @@
-// vars/node_generateSbom.groovy
-// Generates a CycloneDX SBOM for a Node.js project.
-// Returns the sbom file path (string).
 def call(Map config = [:]) {
     String sbomFile = config.get('sbomFile') ?: 'sbom.json'
     boolean installIfMissing = (config.get('installIfMissing') != null) ? config.get('installIfMissing') : true
@@ -19,13 +16,15 @@ def call(Map config = [:]) {
         '''
     }
 
+    // Install specific version of cyclonedx-npm for reproducibility
     sh """
         if ! command -v cyclonedx-npm >/dev/null 2>&1; then
-          echo "Installing @cyclonedx/cyclonedx-npm globally..."
-          npm install -g @cyclonedx/cyclonedx-npm --no-progress --no-audit
+          echo "Installing latest @cyclonedx/cyclonedx-npm globally..."
+          npm install -g @cyclonedx/cyclonedx-npm@3 --no-progress --no-audit
         fi
-        cyclonedx-npm --output-file ${sbomFile}
+        cyclonedx-npm --output-format json --output-file ${sbomFile} --include-dev
         echo "SBOM generated: \$(wc -c < ${sbomFile} || echo 0) bytes"
+        cat ${sbomFile} | grep purl | head -20
     """
     return sbomFile
 }

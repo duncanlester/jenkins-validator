@@ -12,7 +12,7 @@ pipeline {
     DT_API_URL = "${DT_API_URL ?: 'http://dtrack-apiserver:8080'}"
     DT_API_KEY_CRED = "${DT_API_KEY_CRED ?: 'dependency-track-api-key'}"
     PROJECT_NAME = "${PROJECT_NAME ?: env.JOB_NAME ?: 'My-Node-App'}"
-    PROJECT_VERSION = "${PROJECT_VERSION ?: env.BUILD_NUMBER ?: '1.0.0'}"
+    PROJECT_VERSION = "1.0.0"
     SBOM_FILE = 'sbom.json'
     VULN_JSON = 'dt-vulnerabilities.json'
     REPORT_FILE = 'vulnerability-report.html'
@@ -95,13 +95,13 @@ pipeline {
     stage('Render Report') {
       steps {
         script {
-          def report = node_renderNodeReport(
-            vulnJsonFile: env.VULN_JSON,
-            reportFile: env.REPORT_FILE,
-            sbomFile: env.SBOM_FILE,
-            projectName: env.PROJECT_NAME,
-            projectVersion: env.PROJECT_VERSION,
-            publish: true
+          def report = generateNodeReport(
+          vulnJsonFile: env.VULN_JSON,
+          reportFile: env.REPORT_FILE,
+          sbomFile: env.SBOM_FILE,
+          projectName: env.PROJECT_NAME,
+          projectVersion: env.PROJECT_VERSION,
+          publish: true
           )
           echo "Report generated: ${report}"
         }
