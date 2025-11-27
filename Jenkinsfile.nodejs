@@ -54,6 +54,8 @@ pipeline {
       steps {
         script {
           def sbom = node_generateSbom(sbomFile: env.SBOM_FILE, installIfMissing: false)
+          def sbom1 = new groovy.json.JsonSlurper().parseText(readFile('sbom.json'))
+          echo "Sample packages: " + (sbom1.components?.collect { it.purl ?: it.name }?.take(10).join(', '))
           echo "SBOM: ${sbom}"
         }
       }
