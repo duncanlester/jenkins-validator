@@ -3,6 +3,20 @@ import groovy.json.JsonSlurper
 import java.net.URLEncoder
 
 @NonCPS
+def getProjectsUuid(json) {
+    def projects = new JsonSlurper().parseText(json)
+    if (projects && projects.size() > 0) {
+        return projects[0]?.uuid ?: ''
+    }
+    return ''
+}
+
+@NonCPS
+def getUploadToken(json) {
+    def responseObj = new JsonSlurper().parseText(json)
+    return responseObj.token ?: ''
+}
+
 def call(Map config = [:]) {
     String dtApiUrl = config.get('dtApiUrl') ?: env.DT_API_URL ?: 'http://dtrack-apiserver:8080'
     String dtApiKeyCredentialId = config.get('dtApiKeyCredentialId') ?: 'dependency-track-api-key'
@@ -27,19 +41,14 @@ def call(Map config = [:]) {
     def projectUuid = ''
     withCredentials([string(credentialsId: dtApiKeyCredentialId, variable: 'DT_API_KEY')]) {
         try {
-            // Perform SBOM upload and save response to file
             bashScript("""
                 #!/usr/bin/bash
                 curl -s -X PUT "${dtApiUrl}/api/v1/bom" \\
                     -H "Content-Type: application/json" -H "X-Api-Key: \$DT_API_KEY" \\
                     --data @"${payloadFile}" > dt-upload-response.json || true
                 """, "upload_sbom.sh")
-
-            // Parse upload response file to get token (indicates success)
             def responseJson = readFile('dt-upload-response.json')
-            def responseObj = new JsonSlurper().parseText(responseJson)
-            uploadToken = responseObj.token ?: ''
-
+            uploadToken = getUploadToken(responseJson)
             echo "SBOM upload token: ${uploadToken}"
             if (!uploadToken) {
                 error "SBOM upload failed: No upload token received"
@@ -49,7 +58,7 @@ def call(Map config = [:]) {
             error "SBOM upload step exception"
         }
 
-        // locate project UUID (uses JsonSlurper)
+        // locate project UUID with a helper
         for (int i = 0; i < 10; i++) {
             try {
                 bashScript("""
@@ -57,8 +66,7 @@ def call(Map config = [:]) {
                     curl -s -H "X-Api-Key: \$DT_API_KEY" "${dtApiUrl}/api/v1/project?name=${URLEncoder.encode(projectName, 'UTF-8')}" > project-response.json
                     """, "get_project_uuid.sh")
                 def projectJson = readFile('project-response.json')
-                def projects = new JsonSlurper().parseText(projectJson)
-                projectUuid = (projects && projects.size() > 0) ? projects[0]?.uuid : ''
+                projectUuid = getProjectsUuid(projectJson)
                 if (projectUuid) break
             } catch (Exception e) {
                 echo "Error during UUID lookup: ${e.getMessage()}"
