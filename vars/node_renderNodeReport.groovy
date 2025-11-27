@@ -9,7 +9,6 @@ def parseVulns(raw) {
     } catch (Exception e) {
         return []
     }
-    // always produce a list
     if (!(vulns instanceof List)) {
         if (vulns?.vulnerabilities instanceof List) {
             vulns = vulns.vulnerabilities
@@ -19,8 +18,7 @@ def parseVulns(raw) {
             vulns = []
         }
     }
-    // Only return safe maps: every field flattened to string
-    def result = []
+    def result = new ArrayList()
     for (v in vulns) {
         def affectedName = (
             v?.affects instanceof List && v.affects.size() > 0 && v.affects[0]?.ref ?
@@ -54,15 +52,15 @@ def parseVulns(raw) {
         } else if (v?.url) {
             link = "<a href='${escapeHtml(v.url.toString())}' target='_blank'>advisory</a>"
         }
-        result << [
-            affectedName: affectedName,
-            affectedVersion: affectedVersion,
-            id: id,
-            severity: severity,
-            score: score,
-            desc: desc,
-            link: link
-        ]
+        def row = new java.util.HashMap()
+        row.put('affectedName', affectedName)
+        row.put('affectedVersion', affectedVersion)
+        row.put('id', id)
+        row.put('severity', severity)
+        row.put('score', score)
+        row.put('desc', desc)
+        row.put('link', link)
+        result.add(row)
     }
     return result
 }
@@ -79,14 +77,14 @@ def parsePackages(raw) {
     if (!sbom?.components) {
         return []
     }
-    def result = []
+    def result = new ArrayList()
     for (c in sbom.components) {
-        result << [
-            name: c.name?.toString(),
-            version: (c.version ?: '')?.toString(),
-            type: (c.type ?: '')?.toString(),
-            purl: (c.purl ?: '')?.toString()
-        ]
+        def row = new java.util.HashMap()
+        row.put('name', c.name?.toString())
+        row.put('version', (c.version ?: '')?.toString())
+        row.put('type', (c.type ?: '')?.toString())
+        row.put('purl', (c.purl ?: '')?.toString())
+        result.add(row)
     }
     return result
 }
